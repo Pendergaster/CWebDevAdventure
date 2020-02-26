@@ -1,9 +1,9 @@
 #! /bin/bash
 
+clear
 
 gcc \
     main.c \
-    -Wall -Wextra\
     -g \
+    -Wall -Wextra\
     -o server.out\
-
