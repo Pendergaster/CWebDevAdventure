@@ -88,7 +88,7 @@ static void
 client_get(i32 clientfd, Header* headers, u32 numHeaders) {
 
     printf("Getting! \n");
-    write(clientfd, okMessage, ARRAY_SIZE(okMessage) + 1);
+    write(clientfd, okMessage, ARRAY_SIZE(okMessage) - 1);
 
     Header userAgent = {};
     if(header_get_correct(&userAgent, headers, numHeaders, "User-Agent") == -1)
@@ -98,7 +98,7 @@ client_get(i32 clientfd, Header* headers, u32 numHeaders) {
     int written = sprintf (data, "You are using %s", userAgent.value);
     printf("sending %s", data);
     if(written > 0) {
-        write(clientfd, data, written + 1);
+        write(clientfd, data, written);
     }
 
 }
