@@ -4,6 +4,8 @@ s (258 sloc)  5.31 KB
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+*.txt
+
 # User-specific files
 *.suo
 *.user

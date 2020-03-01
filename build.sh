@@ -7,3 +7,4 @@ gcc \
     -g \
     -Wall -Wextra\
     -o server.out\
+    -ltcc -ldl
