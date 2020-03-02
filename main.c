@@ -9,21 +9,10 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include "defs.h"
+#include "fileload.h"
+#include "stringutil.h"
 
-typedef uint64_t    u64;
-typedef int64_t     i64;
-typedef uint32_t    u32;
-typedef int32_t     i32;
-typedef uint16_t    u16;
-typedef int16_t     i16;
-typedef uint8_t     u8;
-typedef int8_t      i8;
-
-#define ARRAY_SIZE(ARR) (sizeof((ARR)) / sizeof(*(ARR)))
-
-char* SERVER_PORT = "12913";
-
-static void server_run();
 
 typedef struct HeaderField {
     char* name, *value;
@@ -37,6 +26,8 @@ typedef struct Header {
     char*       payload;
 } Header;
 
+static void
+server_run();
 
 static void
 client_run(i32 clientfd);
@@ -60,6 +51,7 @@ main(int argc, char** argv) {
 }
 
 
+
 // -1 not found
 static i32
 header_get_correct_field(HeaderField* res, Header* header, const char* name) {
@@ -78,6 +70,7 @@ header_get_correct_field(HeaderField* res, Header* header, const char* name) {
 typedef enum HTTPStatus{
     HTTP_OK,
     HTTP_NOT_FOUND,
+    HTTP_BAD_REQUEST,
 } HTTPStatus;
 
 
@@ -95,6 +88,12 @@ static const char notFoundMessage[] =
 "Content-Length: %d\n"
 "\r\n";
 
+
+static const char badRequest[] =
+"HTTP/1.1 400 Bad Request\r\n"
+"Content-Type: %s\r\n"
+"Content-Length: %d\n"
+"\r\n";
 
 static void
 header_parse(Header* header, char* buf) {
@@ -143,11 +142,14 @@ header_construct(HTTPStatus status,char* contentType, u32 contentLenght, u32* he
     }
     char* data = NULL;
     if(status == HTTP_OK) {
-        data = (char*)malloc(sizeof(ARRAY_SIZE(okMessage) + 253));
+        data = (char*)malloc(sizeof(sizeof(okMessage) + 253));
         *headerLen = sprintf(data, okMessage , contentType, contentLenght);
     } else if(status == HTTP_NOT_FOUND){
-        data = (char*)malloc(sizeof(ARRAY_SIZE(notFoundMessage) + 253));
+        data = (char*)malloc(sizeof(sizeof(notFoundMessage) + 253));
         *headerLen = sprintf(data, notFoundMessage , contentType, contentLenght);
+    } else if(status == HTTP_BAD_REQUEST){
+        data = (char*)malloc(sizeof(sizeof(badRequest) + 253));
+        *headerLen = sprintf(data, badRequest , contentType, contentLenght);
     } else {
         return NULL;
     }
@@ -166,13 +168,11 @@ header_construct(HTTPStatus status,char* contentType, u32 contentLenght, u32* he
 static void
 client_post(i32 clientfd, Header* header) {
 
-
-
     HeaderField contentLenght;
     i32 payloadSize = 0;
 
     if(header_get_correct_field(&contentLenght, header, "Content-Length") != 0) {
-        fprintf(stderr, "Did not foind content lengt for post\n");
+        fprintf(stderr, "Did not find content lenght for post\n");
         return;
     }
 
@@ -206,44 +206,72 @@ client_get_dev(i32 clientfd, Header* header) {
     if(header_get_correct_field(&userAgent, header, "User-Agent") == -1)
         return;
 
-    char data[256];
-    int contentLen = sprintf(data, "You are using %s\n", userAgent.value);
+    char data[482];
+    int contentLen = sprintf(data,
+             "<link rel=\"stylesheet\" href=\"style.css\">\n"
+            "You are using %s\n"
+             "<img src=\"hacker.jpeg\" alt=\"Italian Trulli\">\n", userAgent.value);
     if(0 >= contentLen)
         return;
 
+    size_t size = 0;
+    void* image = load_binary_file("hacker.jpeg", &size);
+    if(!image) return;
+
     u32 headerLen = 0;
-    char* respHeaders = header_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen, &headerLen);
+    char* respHeaders =
+        header_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen, &headerLen);
+    //header_construct(HTTP_OK, "image/jpeg", size, &headerLen);
+
     if(!respHeaders)
         return;
 
+    //printf("Headers (len %d): \n%s", headerLen, respHeaders);
     printf("Headers (len %d): \n%s", headerLen, respHeaders);
 
     write(clientfd, respHeaders, headerLen);
 
     printf("%s", data);
     write(clientfd, data, contentLen);
+    //write(clientfd, image, size);
 
     free(respHeaders);
+    free(image);
 }
 
+
 static void
-client_get(i32 clientfd, Header* header) {
+client_get_image(i32 clientfd, Header* header) {
 
-
-    if(strcmp(header->uri, "/") == 0) {
-        client_get_index();
-    } else if (strcmp(header->uri, "/dev") == 0){
-        client_get_dev(clientfd, header);
+    //Check file extension to prevent user accessing random files
+    char* uri = header->uri + 1;
+    const char* fileExt = filename_get_ext(uri);
+    if(!fileExt) {
+        fprintf(stderr, "not file extension found %s\n", uri);
+        return;
     }
-    else { // unknown
 
-        static const char unknownPage[] =
-            "<b>Unknown page, please go to </b>"
-            "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
+    if(strcmp(fileExt, "png") == 0 ||
+            strcmp(fileExt, "jpeg") == 0 ||
+            strcmp(fileExt, "jpg") == 0)
+    {
+        size_t size = 0;
+        void* image = load_binary_file(uri, &size);
+        if(!image) {
+            fprintf(stderr, "Failed to load file %s\n", uri);
+            return;
+        }
+
+        char* contentType;
+        if(strcmp(header->uri, "jpg") == 0) {
+            // concat strings to free them later...
+            contentType = concat("image/", "jpeg");
+        } else {
+            contentType = concat("image/", uri);
+        }
 
         u32 headerLen = 0;
-        char* respHeaders = header_construct(HTTP_NOT_FOUND, "text/html; charset=utf-8l",
-                ARRAY_SIZE(unknownPage) - 1, &headerLen);
+        char* respHeaders = header_construct(HTTP_OK, contentType, size, &headerLen);
 
         if(!respHeaders)
             return;
@@ -252,17 +280,136 @@ client_get(i32 clientfd, Header* header) {
 
         write(clientfd, respHeaders, headerLen);
 
-        printf("%s", unknownPage);
-        write(clientfd, unknownPage, ARRAY_SIZE(unknownPage) - 1);
+        printf("sending image %s\n", uri);
+        write(clientfd, image, size);
+
+        free(respHeaders);
+        free(image);
+        free(contentType);
+    }
+}
+
+
+static void
+client_get_css(i32 clientfd, Header* header) {
+
+    //Check file extension to prevent user accessing random files
+    char* uri = header->uri + 1;
+    const char* fileExt = filename_get_ext(uri);
+    if(!fileExt) {
+        fprintf(stderr, "not file extension found %s\n", uri);
+        return;
     }
 
+    if(strcmp(fileExt, "css") == 0) {
+        size_t lenght = 0;
+        char* cssData = load_file(uri, &lenght);
+        if(!cssData) {
+            fprintf(stderr, "Failed to load file %s\n", uri);
+            return;
+        }
+
+        u32 headerLen = 0;
+        char* respHeaders = header_construct(HTTP_OK, "text/css; charset=utf-8l", lenght - 1, &headerLen);
+
+        if(!respHeaders)
+            return;
+
+        printf("Headers (len %d): \n%s", headerLen, respHeaders);
+        write(clientfd, respHeaders, headerLen);
+        printf("%s", cssData);
+        write(clientfd, cssData, lenght - 1);
+
+        free(respHeaders);
+        free(cssData);
+    }
+}
+
+static void
+client_unknown_page(i32 clientfd) {
+            static const char unknownPage[] =
+                "<link rel=\"stylesheet\" href=\"style.css\">\n"
+                "<b>Unknown page, please go to </b>"
+                "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
+
+            u32 headerLen = 0;
+            char* respHeaders = header_construct(HTTP_NOT_FOUND, "text/html; charset=utf-8l",
+                    sizeof(unknownPage) - 1, &headerLen);
+
+            if(!respHeaders)
+                return;
+
+            printf("Headers (len %d): \n%s", headerLen, respHeaders);
+
+            write(clientfd, respHeaders, headerLen);
+
+            printf("%s", unknownPage);
+            write(clientfd, unknownPage, sizeof(unknownPage) - 1);
+}
+
+static void
+client_bad_request(i32 clientfd) {
+
+            static const char badRequestMsg[] =
+                "<link rel=\"stylesheet\" href=\"style.css\">\n"
+                "<b>Bad Request 400 </b>"
+                "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
+
+            u32 headerLen = 0;
+            char* respHeaders = header_construct(HTTP_BAD_REQUEST, "text/html; charset=utf-8l",
+                    sizeof(badRequestMsg) - 1, &headerLen);
+
+            if(!respHeaders)
+                return;
+
+            printf("Headers (len %d): \n%s", headerLen, respHeaders);
+
+            write(clientfd, respHeaders, headerLen);
+
+            printf("%s", badRequestMsg);
+            write(clientfd, badRequestMsg, sizeof(badRequestMsg) - 1);
+}
+
+static void
+client_get(i32 clientfd, Header* header) {
+
+    HeaderField acceptField;
+
+    if(header_get_correct_field(&acceptField, header, "Accept") != 0) {
+        fprintf(stderr, "Did not find accept field for post\n");
+        return;
+    }
+
+    // Parse accept fields values
+    char** acceptList = string_split(acceptField.value, ',');
+    if(!acceptList) {
+        fprintf(stderr, "failed to parse acceptList\n");
+        return;
+    }
+
+    if(string_list_contains(acceptList, "text/html") != NULL) { // Get html page
+        if(strcmp(header->uri, "/") == 0) { // Get index
+            client_get_index();
+        } else if (strcmp(header->uri, "/dev") == 0) { // Get dev
+            client_get_dev(clientfd, header);
+        } else { // unknown page
+            client_unknown_page(clientfd);
+        }
+    } else if(string_list_contains(acceptList, "image/webp") != NULL) { // Get image
+        client_get_image(clientfd, header);
+    } else if (string_list_contains(acceptList, "text/css") != NULL) { // Get css
+        client_get_css(clientfd, header);
+    } else {
+        client_bad_request(clientfd);
+    }
+    string_list_dispose(acceptList);
 }
 
 static void
 client_default_method(i32 clientfd) {
 
     char buf[] = "HTTP/1.1 500 Not Handled\r\n\r\nThe server has no handler to the request.\r\n";
-    write(clientfd, buf, ARRAY_SIZE(buf));
+    write(clientfd, buf, sizeof(buf));
 }
 
 static void
@@ -301,6 +448,7 @@ client_run(i32 clientfd) {
     //Closing SOCKET
     shutdown(clientfd, SHUT_RDWR);//All further send and recieve operations are DISABLED...
     close(clientfd);
+    free(buf);
     exit(0);
 }
 
