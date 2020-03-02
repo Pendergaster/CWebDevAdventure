@@ -193,7 +193,7 @@ parse_payload(const char* payload) {
     char c;
     int val = 0;
 
-    start += sizeof("message="); // TODO:
+    start += sizeof("message=") - 1; // TODO: 
 
     while((c = *start++)) {
         if (c == '+') {
@@ -249,19 +249,44 @@ compile_and_run_string(const char* code) {
     free(mem);
 }
 
+int pipe_fd[2];
+int saved_stdout_fd;
+#define STDOUT_PIPE_FD pipe_fd[0]
+static void stdout_redirect_to_pipe() {
+    saved_stdout_fd = dup(STDOUT_FILENO);
+    pipe(pipe_fd);
+    dup2(pipe_fd[1], STDOUT_FILENO);
+}
+static void stdout_restore() {
+    dup2(saved_stdout_fd, STDOUT_FILENO);
+    close(saved_stdout_fd);
+    for (int i = 0; i < 2; i++)
+        close(pipe_fd[i]);
+}
+
 static void
 client_post(i32 clientfd, Header* header) {
 
     if(strcmp(header->uri, "/compile") == 0) {
         char* rst = parse_payload(header->payload);
-        compile_and_run_string(rst);
 
-        char todo[] = "<h1>TODO<h1>";
-        i32 contentLen = sizeof(todo);
+        stdout_redirect_to_pipe();
+        compile_and_run_string(rst);
+        fflush(stdout);
+        char buffer[65536];
+        int page_len = read(STDOUT_PIPE_FD, buffer, ARRAY_SIZE(buffer));
+
+        stdout_restore();
+
+
+        // char todo[] = "<h1>TODO<h1>";
+        // i32 contentLen = sizeof(todo);
+
+
         u32 headerLen = 0;
-        char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen, &headerLen);
+        char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", page_len, &headerLen);
         write(clientfd, respHeader, headerLen);
-        write(clientfd, todo, contentLen);
+        write(clientfd, buffer, page_len);
         free(respHeader);
 
         free(rst);
@@ -296,11 +321,12 @@ client_post(i32 clientfd, Header* header) {
     free(respHeader);
 }
 
+
 static void
 client_get_index(i32 clientfd, Header* header) {
     (void)header;
-    (void)clientfd;
 
+#if 0
     char page[] = 
         "<!DOCTYPE html>"
         "<html>"
@@ -314,16 +340,26 @@ client_get_index(i32 clientfd, Header* header) {
         "</form>"
         "</body>"
         "</html>";
+    (void)page;
+#endif
 
-    int page_len = sizeof(page);
 
+    stdout_redirect_to_pipe();
+
+    system("./index.sh"); 
+
+    char buffer[65536];
+    int page_len = read(STDOUT_PIPE_FD, buffer, ARRAY_SIZE(buffer));
+
+    stdout_restore();
+    // printf("index: %s\n\n", buffer);
+
+    // int page_len = sizeof(page);
     u32 headerLen;
     char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", page_len, &headerLen);
     write(clientfd, respHeader, headerLen);
-    write(clientfd, page, page_len);
+    write(clientfd, buffer, page_len);
     free(respHeader);
-
-    // system("./index.sh"); soon :-)
 }
 
 
