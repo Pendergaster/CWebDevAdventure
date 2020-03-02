@@ -55,7 +55,7 @@ main(int argc, char** argv) {
 
 // -1 not found
 static i32
-header_get_correct_field(HeaderField* res, Header* header, const char* name) {
+header_get_field(HeaderField* res, Header* header, const char* name) {
 
     for(u32 i = 0; i < ARRAY_SIZE(header->fields); i++) {
         if(header->fields[i].name == NULL)
@@ -298,7 +298,7 @@ client_post(i32 clientfd, Header* header) {
     HeaderField contentLenght;
     i32 payloadSize = 0;
 
-    if(header_get_correct_field(&contentLenght, header, "Content-Length") != 0) {
+    if(header_get_field(&contentLenght, header, "Content-Length") != 0) {
         fprintf(stderr, "Did not find content lenght for post\n");
         return;
     }
@@ -368,7 +368,7 @@ static void
 client_get_dev(i32 clientfd, Header* header) {
 
     HeaderField userAgent = {};
-    if(header_get_correct_field(&userAgent, header, "User-Agent") == -1)
+    if(header_get_field(&userAgent, header, "User-Agent") == -1)
         return;
 
     char data[482];
@@ -540,7 +540,7 @@ client_get(i32 clientfd, Header* header) {
 
     HeaderField acceptField;
 
-    if(header_get_correct_field(&acceptField, header, "Accept") != 0) {
+    if(header_get_field(&acceptField, header, "Accept") != 0) {
         fprintf(stderr, "Did not find accept field for post\n");
         return;
     }
@@ -554,7 +554,7 @@ client_get(i32 clientfd, Header* header) {
 
     if(string_list_contains(acceptList, "text/html") != NULL) { // Get html page
         if(strcmp(header->uri, "/") == 0) { // Get index
-            client_get_index();
+            client_get_index(clientfd, header);
         } else if (strcmp(header->uri, "/dev") == 0) { // Get dev
             client_get_dev(clientfd, header);
         } else { // unknown page
@@ -597,6 +597,17 @@ client_run(i32 clientfd) {
 
         Header header = {0};
         header_parse(&header, buf);
+
+        HeaderField contentLen;
+        if(header_get_field(&contentLen, &header, "Content-Length") == 0) {
+            int len = atoi(contentLen.value);
+
+
+            while (numCharacters < len) {
+                numCharacters += recv(clientfd, buf + numCharacters, 65535 - numCharacters, 0);
+            }
+        }
+         
 
 
         if(strcmp("GET", header.method) == 0) {
