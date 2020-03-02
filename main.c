@@ -269,8 +269,6 @@ static void stdout_restore() {
 static void
 client_post(i32 clientfd, Header* header) {
 
-<<<<<<< HEAD
-=======
     if(strcmp(header->uri, "/compile") == 0) {
         char* rst = parse_payload(header->payload);
 
@@ -297,9 +295,6 @@ client_post(i32 clientfd, Header* header) {
         return;
     }
 
-
-
->>>>>>> 44ea30a7106a2106a475eb90d63a90e2a84c6eca
     HeaderField contentLenght;
     i32 payloadSize = 0;
 
@@ -413,19 +408,12 @@ client_get_dev(i32 clientfd, Header* header) {
 static void
 client_get_image(i32 clientfd, Header* header) {
 
-<<<<<<< HEAD
     //Check file extension to prevent user accessing random files
     char* uri = header->uri + 1;
     const char* fileExt = filename_get_ext(uri);
     if(!fileExt) {
         fprintf(stderr, "not file extension found %s\n", uri);
         return;
-=======
-    if(strcmp(header->uri, "/") == 0) {
-        client_get_index(clientfd, header);
-    } else if (strcmp(header->uri, "/dev") == 0){
-        client_get_dev(clientfd, header);
->>>>>>> 44ea30a7106a2106a475eb90d63a90e2a84c6eca
     }
 
     if(strcmp(fileExt, "png") == 0 ||
