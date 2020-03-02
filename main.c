@@ -12,6 +12,7 @@
 #include "defs.h"
 #include "fileload.h"
 #include "stringutil.h"
+#include <libtcc.h>
 
 
 typedef struct HeaderField {
@@ -163,11 +164,142 @@ header_construct(HTTPStatus status,char* contentType, u32 contentLenght, u32* he
     }
 }
 
+u8 char_to_digit[256] = {
+    ['1'] = 1,
+    ['2'] = 2,
+    ['3'] = 3,
+    ['4'] = 4,
+    ['5'] = 5,
+    ['6'] = 6,
+    ['7'] = 7,
+    ['8'] = 8,
+    ['9'] = 9,
+    ['A']  = 10,
+    ['B']  = 11,
+    ['C']  = 12,
+    ['D']  = 13,
+    ['E']  = 14,
+    ['F']  = 15,
+};
 
+// 0 - 31 & 127 edge case
+static char*
+parse_payload(const char* payload) {
+
+    const char* start  = payload;
+    int  len = strlen(payload);
+    char* result = malloc(len + 1);
+    result[len]  = 0;
+
+    char* data = result;
+    char c;
+    int val = 0;
+
+    start += sizeof("message=") - 1; // TODO:
+
+    while((c = *start++)) {
+        if (c == '+') {
+            *data++ = ' ';
+        } else if (c == '%') {
+            for(int i = 0; i < 2; i++) {
+                int digit = char_to_digit[(u8)*start++];
+                val = 16 * val + digit;
+            }
+            *data++ = (char)val;
+        } else {
+            *data++ = c;
+        }
+    }
+
+    FILE* dbg = fopen("debug.txt", "w");
+    if (dbg) {
+        fwrite(result, 1, len, dbg);
+        fclose(dbg);
+    }
+
+    return result;
+}
+
+static void
+compile_and_run_string(const char* code) {
+
+    TCCState* state = tcc_new();
+    if (!state) {
+        printf("could not create state\n");
+        return;
+    }
+    // tcc_set_lib_path(state, "./");
+    // tcc_add_include_path(state, "./");
+    tcc_set_output_type(state, TCC_OUTPUT_MEMORY);
+    tcc_set_options(state, "-m64 -std=c99 -bench");
+
+    tcc_compile_string(state, code);
+
+    int size = tcc_relocate(state, 0);
+    printf("code size: %i kb, %i b\n", size / 1024, size);
+    void* mem = malloc(size);
+    tcc_relocate(state, mem);
+
+    void (*main)(int argc, char** argv) = tcc_get_symbol(state, "main");
+    if (!main) {
+        printf("no main found\n");
+    } else {
+        main(0, 0);
+    }
+
+    tcc_delete(state);
+    free(mem);
+}
+
+int pipe_fd[2];
+int saved_stdout_fd;
+#define STDOUT_PIPE_FD pipe_fd[0]
+static void stdout_redirect_to_pipe() {
+    saved_stdout_fd = dup(STDOUT_FILENO);
+    pipe(pipe_fd);
+    dup2(pipe_fd[1], STDOUT_FILENO);
+}
+static void stdout_restore() {
+    dup2(saved_stdout_fd, STDOUT_FILENO);
+    close(saved_stdout_fd);
+    for (int i = 0; i < 2; i++)
+        close(pipe_fd[i]);
+}
 
 static void
 client_post(i32 clientfd, Header* header) {
 
+<<<<<<< HEAD
+=======
+    if(strcmp(header->uri, "/compile") == 0) {
+        char* rst = parse_payload(header->payload);
+
+        stdout_redirect_to_pipe();
+        compile_and_run_string(rst);
+        fflush(stdout);
+        char buffer[65536];
+        int page_len = read(STDOUT_PIPE_FD, buffer, ARRAY_SIZE(buffer));
+
+        stdout_restore();
+
+
+        // char todo[] = "<h1>TODO<h1>";
+        // i32 contentLen = sizeof(todo);
+
+
+        u32 headerLen = 0;
+        char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", page_len, &headerLen);
+        write(clientfd, respHeader, headerLen);
+        write(clientfd, buffer, page_len);
+        free(respHeader);
+
+        free(rst);
+        return;
+    }
+
+
+
+>>>>>>> 44ea30a7106a2106a475eb90d63a90e2a84c6eca
     HeaderField contentLenght;
     i32 payloadSize = 0;
 
@@ -194,10 +326,48 @@ client_post(i32 clientfd, Header* header) {
     free(respHeader);
 }
 
-static void
-client_get_index() {
 
+static void
+client_get_index(i32 clientfd, Header* header) {
+    (void)header;
+
+#if 0
+    char page[] =
+        "<!DOCTYPE html>"
+        "<html>"
+        "<body>"
+        "<form action=\"/compile\" method=\"post\" target=\"_blank\"> "
+        // "<label for=\"fname\">First name: </label>"
+        // "<input type=\"text\" id=\"fname\" name=\"fname\"><br><br>"
+        "<textarea name=\"message\" rows=\"50\" cols=\"50\"> </textarea> "
+        "<br><br>"
+        "<input type=\"submit\" value=\"compile\">"
+        "</form>"
+        "</body>"
+        "</html>";
+    (void)page;
+#endif
+
+
+    stdout_redirect_to_pipe();
+
+    system("./index.sh");
+
+    char buffer[65536];
+    int page_len = read(STDOUT_PIPE_FD, buffer, ARRAY_SIZE(buffer));
+
+    stdout_restore();
+    // printf("index: %s\n\n", buffer);
+
+    // int page_len = sizeof(page);
+    u32 headerLen;
+    char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", page_len, &headerLen);
+    write(clientfd, respHeader, headerLen);
+    write(clientfd, buffer, page_len);
+    free(respHeader);
 }
+
+
 
 static void
 client_get_dev(i32 clientfd, Header* header) {
@@ -243,12 +413,19 @@ client_get_dev(i32 clientfd, Header* header) {
 static void
 client_get_image(i32 clientfd, Header* header) {
 
+<<<<<<< HEAD
     //Check file extension to prevent user accessing random files
     char* uri = header->uri + 1;
     const char* fileExt = filename_get_ext(uri);
     if(!fileExt) {
         fprintf(stderr, "not file extension found %s\n", uri);
         return;
+=======
+    if(strcmp(header->uri, "/") == 0) {
+        client_get_index(clientfd, header);
+    } else if (strcmp(header->uri, "/dev") == 0){
+        client_get_dev(clientfd, header);
+>>>>>>> 44ea30a7106a2106a475eb90d63a90e2a84c6eca
     }
 
     if(strcmp(fileExt, "png") == 0 ||
