@@ -9,10 +9,14 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <libtcc.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
+
 #include "defs.h"
 #include "fileload.h"
 #include "stringutil.h"
-#include <libtcc.h>
 
 
 typedef struct HeaderField {
@@ -28,27 +32,85 @@ typedef struct Header {
 } Header;
 
 static void
-server_run();
+server_run(SSL_CTX *ctx);
 
 static void
-client_run(i32 clientfd);
+client_run(SSL* clientCon);
 
 static void
-client_start(i32 clientfd);
+client_start(SSL* clientCon, i32 clientfd);
+
+static SSL_CTX*
+ssl_create_context() {
+    SSL_load_error_strings();
+    OpenSSL_add_ssl_algorithms();
+
+    const SSL_METHOD *method;
+    SSL_CTX *ctx;
+
+    // deprecated??
+    // method = SSLv23_server_method();
+
+    method = TLS_server_method();
+
+    ctx = SSL_CTX_new(method);
+    if (!ctx) {
+        perror("Unable to create SSL context");
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    return ctx;
+}
+
+void ssl_configure_context(SSL_CTX *ctx) {
+
+    if (SSL_CTX_set_ecdh_auto(ctx, 1) != 1) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    /* Set the key and cert */
+    if (SSL_CTX_use_certificate_file(ctx, SSL_CERT, SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, SSL_KEY, SSL_FILETYPE_PEM) <= 0 ) {
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void
+ssl_context_dispose(SSL_CTX* context) {
+    SSL_CTX_free(context);
+    EVP_cleanup();
+}
 
 int
 main(int argc, char** argv) {
+
+    SSL_library_init();
+    SSL_CTX *ctx = ssl_create_context();
+
+
+    ssl_configure_context(ctx);
+
     if (argc == 2) {
         SERVER_PORT = argv[2];
         // not valid port
-        if(atol(SERVER_PORT ) == 0) {
-            exit(1);
+        if(atol(SERVER_PORT) == 0) {
+            exit(EXIT_FAILURE);
         }
     }
 
     printf("Hello web\n");
+    server_run(ctx);
 
-    server_run();
+
+    ssl_context_dispose(ctx);
+
 }
 
 
@@ -267,7 +329,7 @@ static void stdout_restore() {
 }
 
 static void
-client_post(i32 clientfd, Header* header) {
+client_post(SSL* clientCon, Header* header) {
 
     if(strcmp(header->uri, "/compile") == 0) {
         char* rst = parse_payload(header->payload);
@@ -287,8 +349,8 @@ client_post(i32 clientfd, Header* header) {
 
         u32 headerLen = 0;
         char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", page_len, &headerLen);
-        write(clientfd, respHeader, headerLen);
-        write(clientfd, buffer, page_len);
+        SSL_write(clientCon, respHeader, headerLen);
+        SSL_write(clientCon, buffer, page_len);
         free(respHeader);
 
         free(rst);
@@ -315,15 +377,15 @@ client_post(i32 clientfd, Header* header) {
     if(!respHeader)
         return;
 
-    write(clientfd, respHeader, headerLen);
-    write(clientfd, data, contentLen);
+    SSL_write(clientCon, respHeader, headerLen);
+    SSL_write(clientCon, data, contentLen);
 
     free(respHeader);
 }
 
 
 static void
-client_get_index(i32 clientfd, Header* header) {
+client_get_index(SSL* clientCon, Header* header) {
     (void)header;
 
 #if 0
@@ -357,15 +419,15 @@ client_get_index(i32 clientfd, Header* header) {
     // int page_len = sizeof(page);
     u32 headerLen;
     char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", page_len, &headerLen);
-    write(clientfd, respHeader, headerLen);
-    write(clientfd, buffer, page_len);
+    SSL_write(clientCon, respHeader, headerLen);
+    SSL_write(clientCon, buffer, page_len);
     free(respHeader);
 }
 
 
 
 static void
-client_get_dev(i32 clientfd, Header* header) {
+client_get_dev(SSL* clientCon, Header* header) {
 
     HeaderField userAgent = {};
     if(header_get_field(&userAgent, header, "User-Agent") == -1)
@@ -373,9 +435,9 @@ client_get_dev(i32 clientfd, Header* header) {
 
     char data[482];
     int contentLen = sprintf(data,
-             "<link rel=\"stylesheet\" href=\"style.css\">\n"
+            "<link rel=\"stylesheet\" href=\"style.css\">\n"
             "You are using %s\n"
-             "<img src=\"hacker.jpeg\" alt=\"Italian Trulli\">\n", userAgent.value);
+            "<img src=\"hacker.jpeg\" alt=\"Italian Trulli\">\n", userAgent.value);
     if(0 >= contentLen)
         return;
 
@@ -386,7 +448,6 @@ client_get_dev(i32 clientfd, Header* header) {
     u32 headerLen = 0;
     char* respHeaders =
         header_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen, &headerLen);
-    //header_construct(HTTP_OK, "image/jpeg", size, &headerLen);
 
     if(!respHeaders)
         return;
@@ -394,11 +455,10 @@ client_get_dev(i32 clientfd, Header* header) {
     //printf("Headers (len %d): \n%s", headerLen, respHeaders);
     printf("Headers (len %d): \n%s", headerLen, respHeaders);
 
-    write(clientfd, respHeaders, headerLen);
+    SSL_write(clientCon, respHeaders, headerLen);
 
     printf("%s", data);
-    write(clientfd, data, contentLen);
-    //write(clientfd, image, size);
+    SSL_write(clientCon, data, contentLen);
 
     free(respHeaders);
     free(image);
@@ -406,7 +466,7 @@ client_get_dev(i32 clientfd, Header* header) {
 
 
 static void
-client_get_image(i32 clientfd, Header* header) {
+client_get_image(SSL* clientCon, Header* header) {
 
     //Check file extension to prevent user accessing random files
     char* uri = header->uri + 1;
@@ -443,10 +503,10 @@ client_get_image(i32 clientfd, Header* header) {
 
         printf("Headers (len %d): \n%s", headerLen, respHeaders);
 
-        write(clientfd, respHeaders, headerLen);
+        SSL_write(clientCon, respHeaders, headerLen);
 
         printf("sending image %s\n", uri);
-        write(clientfd, image, size);
+        SSL_write(clientCon, image, size);
 
         free(respHeaders);
         free(image);
@@ -456,7 +516,7 @@ client_get_image(i32 clientfd, Header* header) {
 
 
 static void
-client_get_css(i32 clientfd, Header* header) {
+client_get_css(SSL* clientCon, Header* header) {
 
     //Check file extension to prevent user accessing random files
     char* uri = header->uri + 1;
@@ -481,9 +541,9 @@ client_get_css(i32 clientfd, Header* header) {
             return;
 
         printf("Headers (len %d): \n%s", headerLen, respHeaders);
-        write(clientfd, respHeaders, headerLen);
+        SSL_write(clientCon, respHeaders, headerLen);
         printf("%s", cssData);
-        write(clientfd, cssData, lenght - 1);
+        SSL_write(clientCon, cssData, lenght - 1);
 
         free(respHeaders);
         free(cssData);
@@ -491,52 +551,52 @@ client_get_css(i32 clientfd, Header* header) {
 }
 
 static void
-client_unknown_page(i32 clientfd) {
-            static const char unknownPage[] =
-                "<link rel=\"stylesheet\" href=\"style.css\">\n"
-                "<b>Unknown page, please go to </b>"
-                "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
+client_unknown_page(SSL* clientCon) {
+    static const char unknownPage[] =
+        "<link rel=\"stylesheet\" href=\"style.css\">\n"
+        "<b>Unknown page, please go to </b>"
+        "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
 
-            u32 headerLen = 0;
-            char* respHeaders = header_construct(HTTP_NOT_FOUND, "text/html; charset=utf-8l",
-                    sizeof(unknownPage) - 1, &headerLen);
+    u32 headerLen = 0;
+    char* respHeaders = header_construct(HTTP_NOT_FOUND, "text/html; charset=utf-8l",
+            sizeof(unknownPage) - 1, &headerLen);
 
-            if(!respHeaders)
-                return;
+    if(!respHeaders)
+        return;
 
-            printf("Headers (len %d): \n%s", headerLen, respHeaders);
+    printf("Headers (len %d): \n%s", headerLen, respHeaders);
 
-            write(clientfd, respHeaders, headerLen);
+    SSL_write(clientCon, respHeaders, headerLen);
 
-            printf("%s", unknownPage);
-            write(clientfd, unknownPage, sizeof(unknownPage) - 1);
+    printf("%s", unknownPage);
+    SSL_write(clientCon, unknownPage, sizeof(unknownPage) - 1);
 }
 
 static void
-client_bad_request(i32 clientfd) {
+client_bad_request(SSL* clientCon) {
 
-            static const char badRequestMsg[] =
-                "<link rel=\"stylesheet\" href=\"style.css\">\n"
-                "<b>Bad Request 400 </b>"
-                "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
+    static const char badRequestMsg[] =
+        "<link rel=\"stylesheet\" href=\"style.css\">\n"
+        "<b>Bad Request 400 </b>"
+        "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
 
-            u32 headerLen = 0;
-            char* respHeaders = header_construct(HTTP_BAD_REQUEST, "text/html; charset=utf-8l",
-                    sizeof(badRequestMsg) - 1, &headerLen);
+    u32 headerLen = 0;
+    char* respHeaders = header_construct(HTTP_BAD_REQUEST, "text/html; charset=utf-8l",
+            sizeof(badRequestMsg) - 1, &headerLen);
 
-            if(!respHeaders)
-                return;
+    if(!respHeaders)
+        return;
 
-            printf("Headers (len %d): \n%s", headerLen, respHeaders);
+    printf("Headers (len %d): \n%s", headerLen, respHeaders);
 
-            write(clientfd, respHeaders, headerLen);
+    SSL_write(clientCon, respHeaders, headerLen);
 
-            printf("%s", badRequestMsg);
-            write(clientfd, badRequestMsg, sizeof(badRequestMsg) - 1);
+    printf("%s", badRequestMsg);
+    SSL_write(clientCon, badRequestMsg, sizeof(badRequestMsg) - 1);
 }
 
 static void
-client_get(i32 clientfd, Header* header) {
+client_get(SSL* clientCon, Header* header) {
 
     HeaderField acceptField;
 
@@ -554,41 +614,47 @@ client_get(i32 clientfd, Header* header) {
 
     if(string_list_contains(acceptList, "text/html") != NULL) { // Get html page
         if(strcmp(header->uri, "/") == 0) { // Get index
-            client_get_index(clientfd, header);
+            client_get_index(clientCon, header);
         } else if (strcmp(header->uri, "/dev") == 0) { // Get dev
-            client_get_dev(clientfd, header);
+            client_get_dev(clientCon, header);
         } else { // unknown page
-            client_unknown_page(clientfd);
+            client_unknown_page(clientCon);
         }
     } else if(string_list_contains(acceptList, "image/webp") != NULL) { // Get image
-        client_get_image(clientfd, header);
+        client_get_image(clientCon, header);
     } else if (string_list_contains(acceptList, "text/css") != NULL) { // Get css
-        client_get_css(clientfd, header);
+        client_get_css(clientCon, header);
     } else {
-        client_bad_request(clientfd);
+        client_bad_request(clientCon);
     }
     string_list_dispose(acceptList);
 }
 
 static void
-client_default_method(i32 clientfd) {
+client_default_method(SSL* clientCon) {
 
     char buf[] = "HTTP/1.1 500 Not Handled\r\n\r\nThe server has no handler to the request.\r\n";
-    write(clientfd, buf, sizeof(buf));
+    SSL_write(clientCon, buf, sizeof(buf));
 }
 
 static void
-client_run(i32 clientfd) {
+client_run(SSL* clientCon) {
 
     // handle client request
-
+    printf("doing something\n");
     //TODO poista
     char* buf = malloc(65535);
-    int numCharacters = recv(clientfd, buf, 65535, 0);
+
+    int numCharacters = SSL_read(clientCon, buf, 65535);
+    if(numCharacters <= 0) {
+        ERR_print_errors_fp(stderr);
+        return;
+    }
 
     if(numCharacters == -1) {
+
         perror("recv()");
-        exit(1);
+        exit(EXIT_FAILURE);
     } else if (numCharacters == 0) {
         printf("Client disconnect\n");
     } else {
@@ -596,6 +662,8 @@ client_run(i32 clientfd) {
         buf[numCharacters] = '\0';
 
         Header header = {0};
+
+        printf("doing something\n");
         header_parse(&header, buf);
 
         HeaderField contentLen;
@@ -604,47 +672,59 @@ client_run(i32 clientfd) {
 
 
             while (numCharacters < len) {
-                numCharacters += recv(clientfd, buf + numCharacters, 65535 - numCharacters, 0);
+                u32 temp = SSL_read(clientCon, buf + numCharacters, 65535 - numCharacters);
+
+                if(temp <= 0) {
+                    ERR_print_errors_fp(stderr);
+                    return;
+                }
+
+                numCharacters +=temp;
             }
         }
-         
 
 
         if(strcmp("GET", header.method) == 0) {
-            client_get(clientfd, &header);
+            client_get(clientCon, &header);
         } else if(strcmp("POST", header.method) == 0) {
-            client_post(clientfd, &header);
+            client_post(clientCon, &header);
         } else {
-            client_default_method(clientfd);
+            client_default_method(clientCon);
         }
 
-        fsync(clientfd);
+        // ssl sync?
+        //fsync(clientfd);
     }
 
-    //Closing SOCKET
-    shutdown(clientfd, SHUT_RDWR);//All further send and recieve operations are DISABLED...
-    close(clientfd);
+
     free(buf);
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 static void
-client_start(i32 clientfd) {
+client_start(SSL* clientCon, i32 clientfd) {
 
     i32 pid = fork();
     if(pid == -1) {
         perror("fork()");
-        exit(1);
+        exit(EXIT_FAILURE);
     } else if(pid == 0) {
-        client_run(clientfd);
+        client_run(clientCon);
+
+        // cleanup
+        shutdown(clientfd, SHUT_RDWR);//All further send and recieve operations are DISABLED...
+        close(clientfd);
+        SSL_shutdown(clientCon);
+        SSL_free(clientCon);
     }
 
 }
 
 static void
-server_run() {
+server_run(SSL_CTX *ctx) {
 
-    printf( "Server started %shttp://127.0.0.1:%s%s\n", "\033[92m",SERVER_PORT,"\033[0m");
+
+    printf( "Server started %shttps://127.0.0.1:%s%s\n", "\033[92m",SERVER_PORT,"\033[0m");
 
     struct addrinfo hints, *res, *p;
 
@@ -657,7 +737,7 @@ server_run() {
 
     if (getaddrinfo( NULL, SERVER_PORT, &hints, &res) != 0) {
         perror ("getaddrinfo()");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     i32 mainfd, option = 1;
@@ -678,7 +758,7 @@ server_run() {
     // mark connection mode socket
     if (listen (mainfd, 1000000) != 0) {
         perror("listen()");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     // Ignore killed childs
@@ -692,12 +772,46 @@ server_run() {
         // wait for connection
         i32 clientfd = accept (mainfd, (struct sockaddr *) &clientaddr, &addrlen);
 
+        // create new ssl structure to hold data for tls connection
+
         if (clientfd < 0) {
             perror("accept()");
-            exit(1);
+            exit(EXIT_FAILURE);
         }
-        // start client
-        client_start(clientfd);
+
+        SSL* ssl = SSL_new(ctx);
+        SSL_set_fd(ssl, clientfd);
+
+        if (SSL_accept(ssl) <= 0) {
+            ERR_print_errors_fp(stderr);
+            SSL_shutdown(ssl);
+            SSL_free(ssl);
+            close(clientfd);
+            continue;
+        }
+        else {
+
+            // show certificates
+            X509 *cert = SSL_get_peer_certificate(ssl); /* Get certificates (if available) */
+            if ( cert != NULL )
+            {
+                printf("Server certificates:\n");
+                char* line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
+                printf("Subject: %s\n", line);
+                free(line);
+                line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
+                printf("Issuer: %s\n", line);
+                free(line);
+                X509_free(cert);
+            }
+            else {
+                printf("No certificates.\n");
+            }// TODO reject connection?
+
+
+            //SSL_write(ssl, reply, strlen(reply));
+            client_start(ssl, clientfd);
+        }
+
     }
 }
-

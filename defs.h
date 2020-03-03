@@ -17,5 +17,7 @@ typedef int8_t      i8;
 #define ARRAY_SIZE(ARR) (sizeof((ARR)) / sizeof(*(ARR)))
 
 static const char* SERVER_PORT = "12913";
+static const char* SSL_CERT = "server.crt";
+static const char* SSL_KEY = "server.key";
 
 #endif /* DEFS_H */

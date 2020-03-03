@@ -6,8 +6,7 @@
 #define STRINGUTIL_H
 
 static char*
-concat(const char *s1, const char *s2)
-{
+concat(const char *s1, const char *s2) {
     char *result = malloc(strlen(s1) + strlen(s2) + 1); // +1 for the null-terminator
     // in real code you would check for errors in malloc here
     strcpy(result, s1);
@@ -16,8 +15,7 @@ concat(const char *s1, const char *s2)
 }
 
 static char**
-string_split(char* a_str, char a_delim)
-{
+string_split(char* a_str, char a_delim) {
     char** result       = 0;
     size_t count        = 0;
     char* tmp           = a_str;

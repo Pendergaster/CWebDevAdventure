@@ -6,6 +6,6 @@ gcc \
     main.c \
     -g \
     -Wall -Wextra\
-    -ltcc -ldl -lpthread \
+    -Wno-unused-function \
+    -ltcc -ldl -lpthread -lssl -lcrypto \
     -o server.out\
-    
