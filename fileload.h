@@ -33,9 +33,9 @@ load_file(char* const path, size_t* fileSize) {
     return data;
 }
 
-static const char*
-filename_get_ext(const char *filename) {
-    const char *dot = strrchr(filename, '.');
+static char*
+filename_get_ext(char *filename) {
+    char *dot = strrchr(filename, '.');
     if(!dot || dot == filename) return "";
     return dot + 1;
 }

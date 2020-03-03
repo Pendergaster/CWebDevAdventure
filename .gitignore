@@ -33,8 +33,6 @@ bld/
 .tags
 tags
 *.spv
-*.jpg
-*.jpeg
 *.taghl
 *.key
 *.pem

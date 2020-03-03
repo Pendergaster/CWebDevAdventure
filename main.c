@@ -205,13 +205,13 @@ header_construct(HTTPStatus status,char* contentType, u32 contentLenght, u32* he
     }
     char* data = NULL;
     if(status == HTTP_OK) {
-        data = (char*)malloc(sizeof(sizeof(okMessage) + 253));
+        data = (char*)malloc(sizeof(okMessage) + 253);
         *headerLen = sprintf(data, okMessage , contentType, contentLenght);
     } else if(status == HTTP_NOT_FOUND){
-        data = (char*)malloc(sizeof(sizeof(notFoundMessage) + 253));
+        data = (char*)malloc(sizeof(notFoundMessage) + 253);
         *headerLen = sprintf(data, notFoundMessage , contentType, contentLenght);
     } else if(status == HTTP_BAD_REQUEST){
-        data = (char*)malloc(sizeof(sizeof(badRequest) + 253));
+        data = (char*)malloc(sizeof(badRequest) + 253);
         *headerLen = sprintf(data, badRequest , contentType, contentLenght);
     } else {
         return NULL;
@@ -441,10 +441,6 @@ client_get_dev(SSL* clientCon, Header* header) {
     if(0 >= contentLen)
         return;
 
-    size_t size = 0;
-    void* image = load_binary_file("hacker.jpeg", &size);
-    if(!image) return;
-
     u32 headerLen = 0;
     char* respHeaders =
         header_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen, &headerLen);
@@ -461,8 +457,15 @@ client_get_dev(SSL* clientCon, Header* header) {
     SSL_write(clientCon, data, contentLen);
 
     free(respHeaders);
-    free(image);
 }
+
+static char* imageTypes[] = {
+    "png",
+    "jpeg",
+    "jpg",
+    "ico",
+    NULL
+};
 
 
 static void
@@ -470,16 +473,13 @@ client_get_image(SSL* clientCon, Header* header) {
 
     //Check file extension to prevent user accessing random files
     char* uri = header->uri + 1;
-    const char* fileExt = filename_get_ext(uri);
+    char* fileExt = filename_get_ext(uri);
     if(!fileExt) {
         fprintf(stderr, "not file extension found %s\n", uri);
         return;
     }
 
-    if(strcmp(fileExt, "png") == 0 ||
-            strcmp(fileExt, "jpeg") == 0 ||
-            strcmp(fileExt, "jpg") == 0)
-    {
+    if(string_list_contains(imageTypes, fileExt)) {
         size_t size = 0;
         void* image = load_binary_file(uri, &size);
         if(!image) {
@@ -641,7 +641,6 @@ static void
 client_run(SSL* clientCon) {
 
     // handle client request
-    printf("doing something\n");
     //TODO poista
     char* buf = malloc(65535);
 
@@ -663,7 +662,6 @@ client_run(SSL* clientCon) {
 
         Header header = {0};
 
-        printf("doing something\n");
         header_parse(&header, buf);
 
         HeaderField contentLen;
@@ -698,7 +696,6 @@ client_run(SSL* clientCon) {
 
 
     free(buf);
-    exit(EXIT_SUCCESS);
 }
 
 static void
@@ -716,6 +713,9 @@ client_start(SSL* clientCon, i32 clientfd) {
         close(clientfd);
         SSL_shutdown(clientCon);
         SSL_free(clientCon);
+
+        printf("Child cleaned up succesfully \n");
+        exit(EXIT_SUCCESS);
     }
 
 }
