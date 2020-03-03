@@ -36,7 +36,10 @@ tags
 *.jpg
 *.jpeg
 *.taghl
-*.out
+*.key
+*.pem
+*.crt
+*.csr
 
 
 # Visual Studio 2015/2017 cache/options directory
