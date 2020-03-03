@@ -40,6 +40,9 @@ tags
 *.pem
 *.crt
 *.csr
+*.srl
+*.out
+*.cert
 
 
 # Visual Studio 2015/2017 cache/options directory
