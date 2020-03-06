@@ -286,15 +286,15 @@ parse_payload(const char* payload) {
     const char* start  = payload;
     int  len = strlen(payload);
     char* result = malloc(len + 1);
-    
+
 
     char* data = result;
     char c;
     int val = 0;
 
     start += sizeof("message=") - 1; // TODO:
-    
-  
+
+
 
     while((c = *start++)) {
         if (c == '+') {
@@ -310,7 +310,7 @@ parse_payload(const char* payload) {
         }
     }
     *data++ = 0;
-    
+
     FILE* dbg = fopen("debug.txt", "w");
     if (dbg) {
         fwrite(result, 1, len, dbg);
@@ -334,7 +334,7 @@ compile_and_run_string(const char* code) {
     tcc_set_options(state, "-m64 -std=c99 -bench");
 
     tcc_compile_string(state, code);
-    
+
     tcc_add_library(state, "tcc");
     tcc_add_library(state, "dl");
     tcc_add_library(state, "pthread");
