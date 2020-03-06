@@ -13,7 +13,6 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-
 #include "defs.h"
 #include "fileload.h"
 #include "stringutil.h"
@@ -130,10 +129,12 @@ header_get_field(HeaderField* res, Header* header, const char* name) {
     return -1;
 }
 
-typedef enum HTTPStatus{
+typedef enum HTTPStatus {
     HTTP_OK,
     HTTP_NOT_FOUND,
     HTTP_BAD_REQUEST,
+    HTTP_MOVED_PERMANENTLY,
+    HTTP_PERMANENTLY_REDIRECTED,
 } HTTPStatus;
 
 
@@ -141,21 +142,32 @@ typedef enum HTTPStatus{
 static const char okMessage[] =
 "HTTP/1.1 200 OK\r\n"
 "Content-Type: %s\r\n"
-"Content-Length: %d\n"
+"Content-Length: %d\r\n"
 "\r\n";
 
 
 static const char notFoundMessage[] =
 "HTTP/1.1 404 Not Found\r\n"
 "Content-Type: %s\r\n"
-"Content-Length: %d\n"
+"Content-Length: %d\r\n"
 "\r\n";
 
 
 static const char badRequest[] =
 "HTTP/1.1 400 Bad Request\r\n"
 "Content-Type: %s\r\n"
-"Content-Length: %d\n"
+"Content-Length: %d\r\n"
+"\r\n";
+
+
+static const char movedPermanently[] =
+"HTTP/1.1 301 Moved Permanently\r\n"
+"Location: " SERVER_LOCATION "\r\n"
+"\r\n";
+
+static const char permanentRedirect[] =
+"HTTP/1.1 308 Permanent Redirect\r\n"
+"Location: " SERVER_LOCATION "\r\n"
 "\r\n";
 
 static void
@@ -195,34 +207,57 @@ header_parse(Header* header, char* buf) {
     header->payload = strtok(NULL, "\r\n");
 }
 
-static char*
-header_construct(HTTPStatus status,char* contentType, u32 contentLenght, u32* headerLen) {
+typedef struct ResponseHeader {
+    char*       data;
+    size_t      size;
+    HTTPStatus  type;
+} ResponseHeader;
+
+static void
+responseheader_dispose(ResponseHeader* header) {
+    if(header->data &&
+            header->type != HTTP_MOVED_PERMANENTLY &&
+            header->type != HTTP_PERMANENTLY_REDIRECTED) {
+        free(header->data);
+    }
+    *header = (ResponseHeader){};
+}
+
+static ResponseHeader
+responseheader_construct(HTTPStatus status,char* contentType, u32 contentLenght) {
+
+    ResponseHeader ret = {.type = status};
     // 999999 max contentLenght
     if(contentLenght > 9999999) {
         fprintf(stderr, "Too long content lenght, exiting..;\n");
         fflush(stderr);
-        return NULL;
+        return (ResponseHeader){};
     }
-    char* data = NULL;
     if(status == HTTP_OK) {
-        data = (char*)malloc(sizeof(okMessage) + 253);
-        *headerLen = sprintf(data, okMessage , contentType, contentLenght);
+        ret.data = (char*)malloc(sizeof(okMessage) + 253);
+        ret.size = sprintf(ret.data, okMessage , contentType, contentLenght);
     } else if(status == HTTP_NOT_FOUND){
-        data = (char*)malloc(sizeof(notFoundMessage) + 253);
-        *headerLen = sprintf(data, notFoundMessage , contentType, contentLenght);
+        ret.data = (char*)malloc(sizeof(notFoundMessage) + 253);
+        ret.size = sprintf(ret.data, notFoundMessage , contentType, contentLenght);
     } else if(status == HTTP_BAD_REQUEST){
-        data = (char*)malloc(sizeof(badRequest) + 253);
-        *headerLen = sprintf(data, badRequest , contentType, contentLenght);
+        ret.data = (char*)malloc(sizeof(badRequest) + 253);
+        ret.size = sprintf(ret.data, badRequest , contentType, contentLenght);
+    } else if(status == HTTP_MOVED_PERMANENTLY) {
+        ret.data = (char*)movedPermanently;
+        ret.size = sizeof(movedPermanently) - 1;
+    } else if(status == HTTP_PERMANENTLY_REDIRECTED){
+        ret.data = (char*)permanentRedirect;
+        ret.size = sizeof(permanentRedirect) - 1;
     } else {
-        return NULL;
+        return (ResponseHeader){};
     }
 
-    if(*headerLen > 0)
-        return data;
+    if(ret.size > 0)
+        return ret;
     else {
         fprintf(stderr, "Too long content lenght, exiting..;\n");
         fflush(stderr);
-        return NULL;
+        return (ResponseHeader){};
     }
 }
 
@@ -347,13 +382,13 @@ client_post(SSL* clientCon, Header* header) {
         // i32 contentLen = sizeof(todo);
 
 
-        u32 headerLen = 0;
-        char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", page_len, &headerLen);
-        SSL_write(clientCon, respHeader, headerLen);
-        SSL_write(clientCon, buffer, page_len);
-        free(respHeader);
-
+        ResponseHeader res = responseheader_construct(HTTP_OK, "text/html; charset=utf-8l", page_len);
+        if(res.data) {
+            SSL_write(clientCon, res.data, res.size);
+            SSL_write(clientCon, buffer, page_len);
+        }
         free(rst);
+        responseheader_dispose(&res);
         return;
     }
 
@@ -372,15 +407,13 @@ client_post(SSL* clientCon, Header* header) {
     if(contentLen >= 0)
         return;
 
-    u32 headerLen = 0;
-    char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen, &headerLen);
-    if(!respHeader)
-        return;
+    ResponseHeader res = responseheader_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen);
+    if(res.data) {
+        SSL_write(clientCon, res.data, res.size);
+        SSL_write(clientCon, data, contentLen);
+    }
 
-    SSL_write(clientCon, respHeader, headerLen);
-    SSL_write(clientCon, data, contentLen);
-
-    free(respHeader);
+    responseheader_dispose(&res);
 }
 
 
@@ -414,14 +447,15 @@ client_get_index(SSL* clientCon, Header* header) {
     int page_len = read(STDOUT_PIPE_FD, buffer, ARRAY_SIZE(buffer));
 
     stdout_restore();
-    // printf("index: %s\n\n", buffer);
 
-    // int page_len = sizeof(page);
-    u32 headerLen;
-    char* respHeader = header_construct(HTTP_OK, "text/html; charset=utf-8l", page_len, &headerLen);
-    SSL_write(clientCon, respHeader, headerLen);
-    SSL_write(clientCon, buffer, page_len);
-    free(respHeader);
+    ResponseHeader res = responseheader_construct(HTTP_OK, "text/html; charset=utf-8l", page_len);
+    if(res.data) {
+        printf("Headers (len %lu): \n%s", res.size, res.data);
+        SSL_write(clientCon, res.data, res.size);
+        printf("%s", buffer);
+        SSL_write(clientCon, buffer, page_len);
+    }
+    responseheader_dispose(&res);
 }
 
 
@@ -441,22 +475,17 @@ client_get_dev(SSL* clientCon, Header* header) {
     if(0 >= contentLen)
         return;
 
-    u32 headerLen = 0;
-    char* respHeaders =
-        header_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen, &headerLen);
+    ResponseHeader res = responseheader_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen);
 
-    if(!respHeaders)
-        return;
+    if(res.data) {
 
-    //printf("Headers (len %d): \n%s", headerLen, respHeaders);
-    printf("Headers (len %d): \n%s", headerLen, respHeaders);
+        printf("Headers (len %lu): \n%s", res.size, res.data);
+        SSL_write(clientCon, res.data, res.size);
+        printf("%s", data);
+        SSL_write(clientCon, data, contentLen);
+    }
 
-    SSL_write(clientCon, respHeaders, headerLen);
-
-    printf("%s", data);
-    SSL_write(clientCon, data, contentLen);
-
-    free(respHeaders);
+    responseheader_dispose(&res);
 }
 
 static char* imageTypes[] = {
@@ -495,20 +524,17 @@ client_get_image(SSL* clientCon, Header* header) {
             contentType = concat("image/", uri);
         }
 
-        u32 headerLen = 0;
-        char* respHeaders = header_construct(HTTP_OK, contentType, size, &headerLen);
+        ResponseHeader res = responseheader_construct(HTTP_OK, contentType, size);
 
-        if(!respHeaders)
-            return;
+        if(res.data) {
+            printf("Headers (len %lu): \n%s", res.size, res.data);
+            SSL_write(clientCon, res.data, res.size);
 
-        printf("Headers (len %d): \n%s", headerLen, respHeaders);
+            printf("sending image %s\n", uri);
+            SSL_write(clientCon, image, size);
+        }
 
-        SSL_write(clientCon, respHeaders, headerLen);
-
-        printf("sending image %s\n", uri);
-        SSL_write(clientCon, image, size);
-
-        free(respHeaders);
+        responseheader_dispose(&res);
         free(image);
         free(contentType);
     }
@@ -534,18 +560,16 @@ client_get_css(SSL* clientCon, Header* header) {
             return;
         }
 
-        u32 headerLen = 0;
-        char* respHeaders = header_construct(HTTP_OK, "text/css; charset=utf-8l", lenght - 1, &headerLen);
+        ResponseHeader res = responseheader_construct(HTTP_OK, "text/css; charset=utf-8l", lenght - 1);
 
-        if(!respHeaders)
-            return;
+        if(res.data) {
+            printf("Headers (len %lu): \n%s", res.size, res.data);
+            SSL_write(clientCon, res.data, res.size);
+            printf("%s", cssData);
+            SSL_write(clientCon, cssData, lenght - 1);
+        }
 
-        printf("Headers (len %d): \n%s", headerLen, respHeaders);
-        SSL_write(clientCon, respHeaders, headerLen);
-        printf("%s", cssData);
-        SSL_write(clientCon, cssData, lenght - 1);
-
-        free(respHeaders);
+        responseheader_dispose(&res);
         free(cssData);
     }
 }
@@ -557,19 +581,18 @@ client_unknown_page(SSL* clientCon) {
         "<b>Unknown page, please go to </b>"
         "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
 
-    u32 headerLen = 0;
-    char* respHeaders = header_construct(HTTP_NOT_FOUND, "text/html; charset=utf-8l",
-            sizeof(unknownPage) - 1, &headerLen);
+    ResponseHeader res = responseheader_construct(HTTP_NOT_FOUND, "text/html; charset=utf-8l",
+            sizeof(unknownPage) - 1);
 
-    if(!respHeaders)
-        return;
+    if(res.data) {
+        printf("Headers (len %lu): \n%s", res.size, res.data);
+        SSL_write(clientCon, res.data, res.size);
 
-    printf("Headers (len %d): \n%s", headerLen, respHeaders);
+        printf("%s", unknownPage);
+        SSL_write(clientCon, unknownPage, sizeof(unknownPage) - 1);
 
-    SSL_write(clientCon, respHeaders, headerLen);
-
-    printf("%s", unknownPage);
-    SSL_write(clientCon, unknownPage, sizeof(unknownPage) - 1);
+    }
+    responseheader_dispose(&res);
 }
 
 static void
@@ -580,19 +603,18 @@ client_bad_request(SSL* clientCon) {
         "<b>Bad Request 400 </b>"
         "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
 
-    u32 headerLen = 0;
-    char* respHeaders = header_construct(HTTP_BAD_REQUEST, "text/html; charset=utf-8l",
-            sizeof(badRequestMsg) - 1, &headerLen);
+    ResponseHeader res = responseheader_construct(HTTP_BAD_REQUEST, "text/html; charset=utf-8l",
+            sizeof(badRequestMsg) - 1);
 
-    if(!respHeaders)
-        return;
+    if(res.data) {
+        printf("Headers (len %lu): \n%s", res.size, res.data);
+        SSL_write(clientCon, res.data, res.size);
 
-    printf("Headers (len %d): \n%s", headerLen, respHeaders);
+        printf("%s", badRequestMsg);
+        SSL_write(clientCon, badRequestMsg, sizeof(badRequestMsg) - 1);
 
-    SSL_write(clientCon, respHeaders, headerLen);
-
-    printf("%s", badRequestMsg);
-    SSL_write(clientCon, badRequestMsg, sizeof(badRequestMsg) - 1);
+    }
+    responseheader_dispose(&res);
 }
 
 static void
@@ -681,7 +703,6 @@ client_run(SSL* clientCon) {
             }
         }
 
-
         if(strcmp("GET", header.method) == 0) {
             client_get(clientCon, &header);
         } else if(strcmp("POST", header.method) == 0) {
@@ -699,32 +720,79 @@ client_run(SSL* clientCon) {
 }
 
 static void
+client_run_redirect(i32 clientfd) {
+
+    char* buf = malloc(1204);
+    int numCharacters = recv(clientfd, buf, 1204, 0);
+
+    if(numCharacters == -1) {
+        perror("recv()");
+        exit(1);
+    } else if (numCharacters == 0) {
+        printf("Client disconnect\n");
+    } else {
+        // handle request
+        buf[numCharacters] = '\0';
+
+        Header header = {0};
+        header_parse(&header, buf);
+        ResponseHeader res = {};
+        if(strcmp("GET", header.method) == 0) {
+            res = responseheader_construct(HTTP_MOVED_PERMANENTLY, NULL, 0);
+            printf("Headers (len %lu): \n%s", res.size, res.data);
+            write(clientfd, res.data, res.size);
+        } else {
+            res = responseheader_construct(HTTP_PERMANENTLY_REDIRECTED, NULL, 0);
+            printf("Headers (len %lu): \n%s", res.size, res.data);
+            write(clientfd, res.data, res.size);
+        }
+
+        responseheader_dispose(&res);
+    }
+    free(buf);
+}
+
+static void
 client_start(SSL* clientCon, i32 clientfd) {
+
+#if 0 // for debugging
+    if (clientCon == NULL) { // http
+        client_run_redirect(clientfd);
+    } else { // https
+        client_run(clientCon);
+        SSL_shutdown(clientCon);
+        SSL_free(clientCon);
+    }
+    // cleanup
+    shutdown(clientfd, SHUT_RDWR);//All further send and recieve operations are DISABLED...
+    close(clientfd);
+#else
 
     i32 pid = fork();
     if(pid == -1) {
         perror("fork()");
         exit(EXIT_FAILURE);
     } else if(pid == 0) {
-        client_run(clientCon);
 
+        if (clientCon == NULL) { // http
+            client_run_redirect(clientfd);
+        } else { // https
+            client_run(clientCon);
+            SSL_shutdown(clientCon);
+            SSL_free(clientCon);
+        }
         // cleanup
         shutdown(clientfd, SHUT_RDWR);//All further send and recieve operations are DISABLED...
         close(clientfd);
-        SSL_shutdown(clientCon);
-        SSL_free(clientCon);
 
         printf("Child cleaned up succesfully \n");
         exit(EXIT_SUCCESS);
     }
-
+#endif
 }
 
-static void
-server_run(SSL_CTX *ctx) {
-
-
-    printf( "Server started %shttps://127.0.0.1:%s%s\n", "\033[92m",SERVER_PORT,"\033[0m");
+static i32
+socket_open(const char* port) {
 
     struct addrinfo hints, *res, *p;
 
@@ -735,7 +803,7 @@ server_run(SSL_CTX *ctx) {
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
 
-    if (getaddrinfo( NULL, SERVER_PORT, &hints, &res) != 0) {
+    if (getaddrinfo( NULL, port, &hints, &res) != 0) {
         perror ("getaddrinfo()");
         exit(EXIT_FAILURE);
     }
@@ -761,56 +829,83 @@ server_run(SSL_CTX *ctx) {
         exit(EXIT_FAILURE);
     }
 
+    return mainfd;
+}
+
+static void
+server_run(SSL_CTX *ctx) {
+
+    printf( "Server started %s" SERVER_LOCATION ":%s%s\n", "\033[92m",SERVER_PORT,"\033[0m");
+
+    i32 mainfd = socket_open(SERVER_PORT);
+    i32 redirectfd = socket_open(REDIRECT_PORT);
+
     // Ignore killed childs
     signal(SIGCHLD,SIG_IGN);
 
     // server loop
     struct sockaddr_in clientaddr;
     socklen_t addrlen = sizeof(clientaddr);
+
     while(1) {
 
-        // wait for connection
-        i32 clientfd = accept (mainfd, (struct sockaddr *) &clientaddr, &addrlen);
+        // wait for connection to either http or https port
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        int fds[] = { mainfd, redirectfd};
 
-        // create new ssl structure to hold data for tls connection
+        FD_SET(fds[0], &readfds);
+        FD_SET(fds[1], &readfds);
 
-        if (clientfd < 0) {
-            perror("accept()");
+        i32 maxfd = -1;
+        for (u32 i = 0; i < ARRAY_SIZE(fds); i++) {
+            FD_SET(fds[i], &readfds);
+            if (fds[i] > maxfd)
+                maxfd = fds[i];
+        }
+
+        i32 status = select(maxfd + 1, &readfds, NULL, NULL, NULL);
+        if (status == -1) {
+            perror("select()");
             exit(EXIT_FAILURE);
         }
 
-        SSL* ssl = SSL_new(ctx);
-        SSL_set_fd(ssl, clientfd);
+        if (FD_ISSET(fds[0], &readfds)) { // https
+            int clientfd = accept(fds[0],(struct sockaddr *)&clientaddr, &addrlen);
 
-        if (SSL_accept(ssl) <= 0) {
-            ERR_print_errors_fp(stderr);
-            SSL_shutdown(ssl);
-            SSL_free(ssl);
-            close(clientfd);
-            continue;
-        }
-        else {
+            SSL* ssl = SSL_new(ctx);
+            SSL_set_fd(ssl, clientfd);
 
-            // show certificates
-            X509 *cert = SSL_get_peer_certificate(ssl); /* Get certificates (if available) */
-            if ( cert != NULL )
-            {
-                printf("Server certificates:\n");
-                char* line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
-                printf("Subject: %s\n", line);
-                free(line);
-                line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
-                printf("Issuer: %s\n", line);
-                free(line);
-                X509_free(cert);
+            if (SSL_accept(ssl) <= 0) {
+                ERR_print_errors_fp(stderr);
+                SSL_shutdown(ssl);
+                SSL_free(ssl);
+                close(clientfd);
+                continue;
             }
             else {
-                printf("No certificates.\n");
-            }// TODO reject connection?
+                // show certificates
+                X509 *cert = SSL_get_peer_certificate(ssl); /* Get certificates (if available) */
+                if ( cert != NULL ) {
+                    printf("Server certificates:\n");
+                    char* line = X509_NAME_oneline(X509_get_subject_name(cert), 0, 0);
+                    printf("Subject: %s\n", line);
+                    free(line);
+                    line = X509_NAME_oneline(X509_get_issuer_name(cert), 0, 0);
+                    printf("Issuer: %s\n", line);
+                    free(line);
+                    X509_free(cert);
+                }
+                else {
+                    printf("No certificates.\n");
+                }// TODO reject connection?
 
-
-            //SSL_write(ssl, reply, strlen(reply));
-            client_start(ssl, clientfd);
+                //SSL_write(ssl, reply, strlen(reply));
+                client_start(ssl, clientfd);
+            }
+        } else if (FD_ISSET(fds[1], &readfds)) { // http
+            int clientfd = accept(fds[1], (struct sockaddr *)&clientaddr, &addrlen);
+            client_start(NULL, clientfd);
         }
 
     }
