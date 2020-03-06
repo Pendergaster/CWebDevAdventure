@@ -286,13 +286,15 @@ parse_payload(const char* payload) {
     const char* start  = payload;
     int  len = strlen(payload);
     char* result = malloc(len + 1);
-    result[len]  = 0;
+    
 
     char* data = result;
     char c;
     int val = 0;
 
     start += sizeof("message=") - 1; // TODO:
+    
+  
 
     while((c = *start++)) {
         if (c == '+') {
@@ -307,7 +309,8 @@ parse_payload(const char* payload) {
             *data++ = c;
         }
     }
-
+    *data++ = 0;
+    
     FILE* dbg = fopen("debug.txt", "w");
     if (dbg) {
         fwrite(result, 1, len, dbg);
