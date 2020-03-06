@@ -334,6 +334,12 @@ compile_and_run_string(const char* code) {
     tcc_set_options(state, "-m64 -std=c99 -bench");
 
     tcc_compile_string(state, code);
+    
+    tcc_add_library(state, "tcc");
+    tcc_add_library(state, "dl");
+    tcc_add_library(state, "pthread");
+    tcc_add_library(state, "ssl");
+    tcc_add_library(state, "crypto");
 
     int size = tcc_relocate(state, 0);
     printf("code size: %i kb, %i b\n", size / 1024, size);
