@@ -321,7 +321,7 @@ parse_payload(const char* payload) {
 }
 
 static void
-compile_and_run_string(const char* code) {
+compile_and_run_string(const char* code, int* size_out) {
 
     TCCState* state = tcc_new();
     if (!state) {
@@ -331,9 +331,11 @@ compile_and_run_string(const char* code) {
     // tcc_set_lib_path(state, "./");
     // tcc_add_include_path(state, "./");
     tcc_set_output_type(state, TCC_OUTPUT_MEMORY);
-    tcc_set_options(state, "-m64 -std=c99 -bench");
+    tcc_set_options(state, "-w -m64 -std=c99 -bench");
 
-    tcc_compile_string(state, code);
+    if (tcc_compile_string(state, code) == -1) {
+        return;
+    }
 
     tcc_add_library(state, "tcc");
     tcc_add_library(state, "dl");
@@ -342,7 +344,6 @@ compile_and_run_string(const char* code) {
     tcc_add_library(state, "crypto");
 
     int size = tcc_relocate(state, 0);
-    printf("code size: %i kb, %i b\n", size / 1024, size);
     void* mem = malloc(size);
     tcc_relocate(state, mem);
 
@@ -351,6 +352,10 @@ compile_and_run_string(const char* code) {
         printf("no main found\n");
     } else {
         main(0, 0);
+    }
+
+    if (size_out) {
+        *size_out = size;
     }
 
     tcc_delete(state);
@@ -372,6 +377,16 @@ static void stdout_restore() {
         close(pipe_fd[i]);
 }
 
+static const char navigation_menu_str[] = {
+    "<body>"
+    "<pre>"
+    "<a href=\"/dev\">Dev</a> "
+    "<a href=\"/\">Compile</a> "
+    "\n"
+    "\n"
+    "</pre>" 
+};
+
 static void
 client_post(SSL* clientCon, Header* header) {
 
@@ -379,7 +394,32 @@ client_post(SSL* clientCon, Header* header) {
         char* rst = parse_payload(header->payload);
 
         stdout_redirect_to_pipe();
-        compile_and_run_string(rst);
+        printf("</head>");
+        printf("<link rel=\"stylesheet\" href=\"style.css\">\n");
+        printf("</head>");
+
+        printf(navigation_menu_str);
+
+        int size_out = 0;
+        printf("<pre>");
+
+        {   // also redirect stderr for compile errors
+            int saved_stderr;
+            saved_stderr = dup(STDERR_FILENO);
+            dup2(pipe_fd[1], STDERR_FILENO);
+            compile_and_run_string(rst, &size_out);
+            dup2(saved_stderr, STDERR_FILENO);
+            close(saved_stderr);
+        }
+
+        printf("</pre>");
+        //
+        printf("<br>");
+        printf("<br>");
+        printf("code size: %i kb, %i b\n", size_out / 1024, size_out);
+
+        printf("</body>");
+
         fflush(stdout);
         char buffer[65536];
         int page_len = read(STDOUT_PIPE_FD, buffer, ARRAY_SIZE(buffer));
@@ -449,7 +489,11 @@ client_get_index(SSL* clientCon, Header* header) {
 
 
     stdout_redirect_to_pipe();
+        // printf("</head>");
+        // printf("<link rel=\"stylesheet\" href=\"style.css\">\n");
+        // printf("</head>");
 
+    printf(navigation_menu_str);
     system("./index.sh");
 
     char buffer[65536];

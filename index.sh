@@ -33,33 +33,33 @@ echo "<head>"
 
 
 echo "<style>body{text-align:center;overflow-y:scroll;font:calc(0.75em + 1vmin) monospace}pre pre{text-align:left;display:inline-block}img{max-width:57ch;display:block;height:auto;width:100%}@media(prefers-color-scheme:dark){body{background:#000;color:#fff}a{color:#6CF}}</style>"
-
-
-
 echo "</head>"
+
 echo "<body>"
-echo "<h1> tervetuloa sivulle</h1>"
-echo "<br>"
-echo "terveisia unit_test.sh:sta"
-echo "<br>"
-echo "<br>"
+echo "<h1> Oletko valmiina hakkeroimaan? </h1>"
+# echo "Oletko valmiina hakkeroimaan?"
 
 
 
 echo "<form action=\"/compile\" method=\"post\" target=\"_blank\"> "
-echo "<textarea name=\"message\" id="message" rows="6" cols="75">Code here</textarea>"
-echo "<br><br>"
 echo "<input type=\"submit\" value=\"compile\">"
+echo "<br>"
+echo "<textarea name=\"message\" id="message" rows="40" cols="80">"
+echo "#include<stdio.h> "
+echo ""
+echo "int main() {"
+echo "    printf(\"hello world\\n\");"
+echo "}"
+echo "</textarea>"
+echo "<br><br>"
 echo "</form>"
 
 
-echo "<br>"
-echo "<br>"
-
-# echo "<img src=\"minion.jpg\" alt=\"Italian minion\">"
-
-echo "<br>"
-echo "<br>"
+# echo "<br>"
+# echo "<br>"
+# echo "<img src=\"minion.jpg\" alt=\"Italian minion\""
+# echo "<br>"
+# echo "<br>"
 
 echo "</body>"
 
