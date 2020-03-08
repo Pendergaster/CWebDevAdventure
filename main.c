@@ -18,8 +18,11 @@
 #include "stringutil.h"
 
 //#define HTTP
-//#define SSL_read read
-//#define SSL_write write
+
+#ifdef HTTP
+#define SSL_read read
+#define SSL_write write
+#endif
 
 typedef struct HeaderField {
     char* name, *value;
