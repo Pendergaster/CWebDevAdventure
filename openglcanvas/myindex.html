@@ -1,0 +1,154 @@
+﻿<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <style>
+        #canvas {
+            z-index: -1;
+            position: fixed;
+            top: 0px;
+            left: 0px;
+            margin: 0px;
+            border: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            z-index: 0;
+            color: white;
+        }
+
+
+        .top-container {
+            background-color: #f1f1f1;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header {
+            padding: 10px 16px;
+            background: #555;
+            color: #f1f1f1;
+        }
+
+        .content {
+            padding: 16px;
+        }
+
+        .sticky {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 10
+        }
+
+            .sticky + .content {
+                padding-top: 102px;
+            }
+
+        p#fullScreenButton {
+            text-align: center;
+            background-color: #e55b49;
+            font-family: Sans-Serif;
+            padding: 10px;
+            visibility: hidden;
+        }
+
+        p.startButton {
+            text-align: center;
+            background-color: #4c7aff;
+            font-family: Sans-Serif;
+            padding: 10px;
+        }
+
+        #loadingDiv {
+            text-align: center;
+        }
+    </style>
+</head>
+
+
+<body>
+
+
+
+    <!---
+        <div class="top-container">
+        <h1>Scroll Down</h1>
+        <p>Scroll down to see the sticky effect.</p>
+        </div>
+    -->
+
+    <div class="header" id="myHeader">
+        <h2>Limainen Header</h2>
+    </div>
+
+    <canvas class="game" id="canvas" oncontextmenu="event.preventDefault()"
+            style="width: 100%; height:100%;"></canvas>
+
+    <!--
+      <div id="loadingDiv">loading...</div>
+      <div style="width:200px; margin-left:auto; margin-right:auto">
+      <p class="startButton" onclick="start_function(this)">Click to start</p>
+      <p id="fullScreenButton" onclick="Module.requestFullScreen(true, false)">Click for full-screen</p>
+    -->
+
+    <script type='text/javascript'>
+        var Module = {
+        onRuntimeInitialized: function() {
+            // INIT?
+            // var e = document.getElementById('loadingDiv');
+            // e.style.visibility = 'hidden';
+            window_on_resize = Module.cwrap('window_on_resize', 'void', ['number', 'number'])
+        },
+        canvas: (function() {
+            var canvas = document.getElementById('canvas');
+            return canvas;
+        })()
+        };
+
+        var start_function = function(o) {
+        //    o.style.visibility = "hidden";
+        //    document.getElementById("fullScreenButton").style.visibility="visible";
+        Module.ccall('mainf', null, null);
+        };
+
+        var script = document.createElement('script');
+        script.src = "index.js";
+        document.body.appendChild(script);
+
+        window.onload = window.onresize = function() {
+        window_on_resize(window.innerWidth, window.innerHeight);
+        console.log("canvas " + Module.canvas.width + " " + canvas.height);
+        canvas.width  = window.innerWidth;
+        canvas.height = window.innerHeight;
+        }
+
+    </script>
+    <script>
+        // When the user scrolls the page, execute myFunction
+        window.onscroll = function() {myFunction()};
+
+        // Get the header
+        var header = document.getElementById("myHeader");
+
+        // Get the offset position of the navbar
+        var sticky = header.offsetTop;
+
+        // Add the sticky class to the header when you reach its scroll position. Remove "sticky" when you leave the scroll position
+
+        function myFunction() {
+            if (window.pageYOffset > sticky) {
+                header.classList.add("sticky");
+            } else {
+                header.classList.remove("sticky");
+            }
+        }
+     </script>
+
+</body>
+</html>
