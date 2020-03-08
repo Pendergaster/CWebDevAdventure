@@ -36,7 +36,7 @@ load_file(char* const path, size_t* fileSize) {
 static char*
 filename_get_ext(char *filename) {
     char *dot = strrchr(filename, '.');
-    if(!dot || dot == filename) return "";
+    if(!dot || dot == filename) return NULL;
     return dot + 1;
 }
 

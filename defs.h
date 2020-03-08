@@ -22,4 +22,17 @@ static const char* SSL_CERT = "server.crt";
 static const char* SSL_KEY = "encrypted.key";
 #define SERVER_LOCATION "https://127.0.0.1:12913"
 
+//#define HTTP // dont use TLS/ SSL
+
+#ifdef HTTP
+#define client_write write
+#define client_read read
+typedef i32 ClientHandle;
+#else
+#define client_read SSL_read
+#define client_write SSL_write
+typedef SSL* ClientHandle;
+#endif
+
+
 #endif /* DEFS_H */
