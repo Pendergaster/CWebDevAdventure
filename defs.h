@@ -19,7 +19,7 @@ typedef int8_t      i8;
 static const char* SERVER_PORT = "12913";
 static const char* REDIRECT_PORT = "12900";
 static const char* SSL_CERT = "server.crt";
-static const char* SSL_KEY = "server.key";
+static const char* SSL_KEY = "encrypted.key";
 #define SERVER_LOCATION "https://127.0.0.1:12913"
 
 #endif /* DEFS_H */
