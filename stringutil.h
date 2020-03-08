@@ -66,7 +66,7 @@ static char* // NULL not found
 string_list_contains(char** list, char* val) {
 
     for (int i = 0; *(list + i); i++) {
-
+        printf("comparing %s : %s\n", *(list + i), val);
         if(strcmp(*(list + i), val) == 0) {
             return *(list + i);
         }

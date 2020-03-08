@@ -172,7 +172,6 @@ static const char okMessage[] =
 "Content-Length: %d\r\n"
 "\r\n";
 
-
 static const char notFoundMessage[] =
 "HTTP/1.1 404 Not Found\r\n"
 "Content-Type: %s\r\n"
@@ -254,8 +253,8 @@ static ResponseHeader
 responseheader_construct(HTTPStatus status,char* contentType, u32 contentLenght) {
 
     ResponseHeader ret = {.type = status};
-    // 999999 max contentLenght
-    if(contentLenght > 9999999) {
+    // 999 999 max contentLenght
+    if(contentLenght > 999999999) {
         fprintf(stderr, "Too long content lenght, exiting..;\n");
         fflush(stderr);
         return (ResponseHeader){};
@@ -587,6 +586,62 @@ static char* imageTypes[] = {
     NULL
 };
 
+static char* audioTypes[] = {
+    "wav",
+    NULL
+};
+
+
+static void
+#ifdef HTTP
+client_get_audio(i32 clientCon, Header* header) {
+#else
+client_get_audio(SSL* clientCon, Header* header) {
+#endif
+
+    //Check file extension to prevent user accessing random files
+    char* uri = header->uri + 1;
+    char* fileExt = filename_get_ext(uri);
+    if(!fileExt) {
+        fprintf(stderr, "not file extension found %s\n", uri);
+        return;
+    }
+
+    if(string_list_contains(audioTypes, fileExt)) {
+        size_t size = 0;
+        void* audio = load_binary_file(uri, &size);
+        if(!audio) {
+            fprintf(stderr, "Failed to load file %s\n", uri);
+            return;
+        }
+
+        printf("Audio size is %ld /n", size);
+
+        char* contentType;
+        if(strcmp(fileExt, "mp3") == 0) {
+            // concat strings to free them later...
+            contentType = concat("audio/", "mpeg");
+        } else {
+            contentType = concat("audio/", fileExt);
+        }
+
+        ResponseHeader res = responseheader_construct(HTTP_OK, contentType, size);
+
+        if(res.data) {
+            printf("Headers (len %lu): \n%s", res.size, res.data);
+            SSL_write(clientCon, res.data, res.size);
+
+            printf("sending audio %s\n", uri);
+            SSL_write(clientCon, audio, size);
+        }
+
+        responseheader_dispose(&res);
+        free(audio);
+        free(contentType);
+    }
+
+
+}
 
 static void
 #ifdef HTTP
@@ -612,11 +667,11 @@ client_get_image(SSL* clientCon, Header* header) {
         }
 
         char* contentType;
-        if(strcmp(header->uri, "jpg") == 0) {
+        if(strcmp(fileExt, "jpg") == 0) {
             // concat strings to free them later...
             contentType = concat("image/", "jpeg");
         } else {
-            contentType = concat("image/", uri);
+            contentType = concat("image/", fileExt);
         }
 
         ResponseHeader res = responseheader_construct(HTTP_OK, contentType, size);
@@ -756,6 +811,8 @@ client_get(SSL* clientCon, Header* header) {
         client_get_image(clientCon, header);
     } else if (string_list_contains(acceptList, "text/css") != NULL) { // Get css
         client_get_css(clientCon, header);
+    } else if (string_list_contains(acceptList, "audio/wav") != NULL) { // Get css
+        client_get_audio(clientCon, header);
     } else {
         client_bad_request(clientCon);
     }

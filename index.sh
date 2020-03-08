@@ -39,6 +39,10 @@ echo "<body>"
 echo "<h1> Oletko valmiina hakkeroimaan? </h1>"
 # echo "Oletko valmiina hakkeroimaan?"
 
+echo "<audio controls>"
+echo "<source src="audio.wav" type="audio/wav">"
+echo "Your browser does not support the audio element."
+echo "</audio>"
 
 
 echo "<form action=\"/compile\" method=\"post\" target=\"_blank\"> "
