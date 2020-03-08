@@ -16,13 +16,7 @@
 #include "defs.h"
 #include "fileload.h"
 #include "stringutil.h"
-
-//#define HTTP
-
-#ifdef HTTP
-#define SSL_read read
-#define SSL_write write
-#endif
+#include "httpheaderdefs.h"
 
 typedef struct HeaderField {
     char* name, *value;
@@ -45,9 +39,9 @@ client_run(i32 clientCon);
 #else
 client_run(SSL* clientCon);
 #endif
+
 static void
 client_start(SSL* clientCon, i32 clientfd);
-
 
 static int
 password_cb(char *buf, i32 num, i32 rwflag,void *userdata) {
@@ -69,9 +63,6 @@ ssl_create_context() {
 
     const SSL_METHOD *method;
     SSL_CTX *ctx;
-
-    // deprecated??
-    // method = SSLv23_server_method();
 
     method = TLS_server_method();
 
@@ -134,9 +125,7 @@ main(int argc, char** argv) {
     printf("Hello web\n");
     server_run(ctx);
 
-
     ssl_context_dispose(ctx);
-
 }
 
 
@@ -155,46 +144,6 @@ header_get_field(HeaderField* res, Header* header, const char* name) {
     }
     return -1;
 }
-
-typedef enum HTTPStatus {
-    HTTP_OK,
-    HTTP_NOT_FOUND,
-    HTTP_BAD_REQUEST,
-    HTTP_MOVED_PERMANENTLY,
-    HTTP_PERMANENTLY_REDIRECTED,
-} HTTPStatus;
-
-
-
-static const char okMessage[] =
-"HTTP/1.1 200 OK\r\n"
-"Content-Type: %s\r\n"
-"Content-Length: %d\r\n"
-"\r\n";
-
-static const char notFoundMessage[] =
-"HTTP/1.1 404 Not Found\r\n"
-"Content-Type: %s\r\n"
-"Content-Length: %d\r\n"
-"\r\n";
-
-
-static const char badRequest[] =
-"HTTP/1.1 400 Bad Request\r\n"
-"Content-Type: %s\r\n"
-"Content-Length: %d\r\n"
-"\r\n";
-
-
-static const char movedPermanently[] =
-"HTTP/1.1 301 Moved Permanently\r\n"
-"Location: " SERVER_LOCATION "\r\n"
-"\r\n";
-
-static const char permanentRedirect[] =
-"HTTP/1.1 308 Permanent Redirect\r\n"
-"Location: " SERVER_LOCATION "\r\n"
-"\r\n";
 
 static void
 header_parse(Header* header, char* buf) {
@@ -414,11 +363,7 @@ static const char navigation_menu_str[] = {
 };
 
 static void
-#ifdef HTTP
-client_post(i32 clientCon, Header* header) {
-#else
-client_post(SSL* clientCon, Header* header) {
-#endif
+client_post(ClientHandle clientCon, Header* header) {
     if(strcmp(header->uri, "/compile") == 0) {
         char* rst = parse_payload(header->payload);
 
@@ -462,8 +407,8 @@ client_post(SSL* clientCon, Header* header) {
 
         ResponseHeader res = responseheader_construct(HTTP_OK, "text/html; charset=utf-8l", page_len);
         if(res.data) {
-            SSL_write(clientCon, res.data, res.size);
-            SSL_write(clientCon, buffer, page_len);
+            client_write(clientCon, res.data, res.size);
+            client_write(clientCon, buffer, page_len);
         }
         free(rst);
         responseheader_dispose(&res);
@@ -487,8 +432,8 @@ client_post(SSL* clientCon, Header* header) {
 
     ResponseHeader res = responseheader_construct(HTTP_OK, "text/html; charset=utf-8l", contentLen);
     if(res.data) {
-        SSL_write(clientCon, res.data, res.size);
-        SSL_write(clientCon, data, contentLen);
+        client_write(clientCon, res.data, res.size);
+        client_write(clientCon, data, contentLen);
     }
 
     responseheader_dispose(&res);
@@ -496,35 +441,10 @@ client_post(SSL* clientCon, Header* header) {
 
 
 static void
-#ifdef HTTP
-client_get_index(i32 clientCon, Header* header) {
-#else
-client_get_index(SSL* clientCon, Header* header) {
-#endif
+client_get_index(ClientHandle clientCon, Header* header) {
     (void)header;
 
-#if 0
-    char page[] =
-        "<!DOCTYPE html>"
-        "<html>"
-        "<body>"
-        "<form action=\"/compile\" method=\"post\" target=\"_blank\"> "
-        // "<label for=\"fname\">First name: </label>"
-        // "<input type=\"text\" id=\"fname\" name=\"fname\"><br><br>"
-        "<textarea name=\"message\" rows=\"50\" cols=\"50\"> </textarea> "
-        "<br><br>"
-        "<input type=\"submit\" value=\"compile\">"
-        "</form>"
-        "</body>"
-        "</html>";
-    (void)page;
-#endif
-
-
     stdout_redirect_to_pipe();
-    // printf("</head>");
-    // printf("<link rel=\"stylesheet\" href=\"style.css\">\n");
-    // printf("</head>");
 
     printf(navigation_menu_str);
     system("./index.sh");
@@ -537,9 +457,9 @@ client_get_index(SSL* clientCon, Header* header) {
     ResponseHeader res = responseheader_construct(HTTP_OK, "text/html; charset=utf-8l", page_len);
     if(res.data) {
         printf("Headers (len %lu): \n%s", res.size, res.data);
-        SSL_write(clientCon, res.data, res.size);
+        client_write(clientCon, res.data, res.size);
         printf("%s", buffer);
-        SSL_write(clientCon, buffer, page_len);
+        client_write(clientCon, buffer, page_len);
     }
     responseheader_dispose(&res);
 }
@@ -547,12 +467,7 @@ client_get_index(SSL* clientCon, Header* header) {
 
 
 static void
-#ifdef HTTP
-client_get_dev(i32 clientCon, Header* header) {
-#else
-client_get_dev(SSL* clientCon, Header* header) {
-#endif
-
+client_get_dev(ClientHandle clientCon, Header* header) {
     HeaderField userAgent = {};
     if(header_get_field(&userAgent, header, "User-Agent") == -1)
         return;
@@ -570,277 +485,213 @@ client_get_dev(SSL* clientCon, Header* header) {
     if(res.data) {
 
         printf("Headers (len %lu): \n%s", res.size, res.data);
-        SSL_write(clientCon, res.data, res.size);
+        client_write(clientCon, res.data, res.size);
         printf("%s", data);
-        SSL_write(clientCon, data, contentLen);
+        client_write(clientCon, data, contentLen);
     }
 
     responseheader_dispose(&res);
 }
 
-static char* imageTypes[] = {
-    "png",
-    "jpeg",
-    "jpg",
-    "ico",
-    NULL
-};
-
-static char* audioTypes[] = {
-    "wav",
-    NULL
-};
-
-
-static void
-#ifdef HTTP
-client_get_audio(i32 clientCon, Header* header) {
-#else
-client_get_audio(SSL* clientCon, Header* header) {
-#endif
-
-    //Check file extension to prevent user accessing random files
+static int // -1 error
+client_get_audio(ClientHandle clientCon, Header* header) {
     char* uri = header->uri + 1;
     char* fileExt = filename_get_ext(uri);
-    if(!fileExt) {
-        fprintf(stderr, "not file extension found %s\n", uri);
-        return;
+
+    size_t size = 0;
+    void* audio = load_binary_file(uri, &size);
+    if(!audio) {
+        fprintf(stderr, "Failed to load file %s\n", uri);
+        return -1;
     }
 
-    if(string_list_contains(audioTypes, fileExt)) {
-        size_t size = 0;
-        void* audio = load_binary_file(uri, &size);
-        if(!audio) {
-            fprintf(stderr, "Failed to load file %s\n", uri);
-            return;
-        }
+    printf("Audio size is %ld /n", size);
 
-        printf("Audio size is %ld /n", size);
-
-        char* contentType;
-        if(strcmp(fileExt, "mp3") == 0) {
-            // concat strings to free them later...
-            contentType = concat("audio/", "mpeg");
-        } else {
-            contentType = concat("audio/", fileExt);
-        }
-
-        ResponseHeader res = responseheader_construct(HTTP_OK, contentType, size);
-
-        if(res.data) {
-            printf("Headers (len %lu): \n%s", res.size, res.data);
-            SSL_write(clientCon, res.data, res.size);
-
-            printf("sending audio %s\n", uri);
-            SSL_write(clientCon, audio, size);
-        }
-
-        responseheader_dispose(&res);
-        free(audio);
-        free(contentType);
+    char* contentType;
+    if(strcmp(fileExt, "mp3") == 0) {
+        // concat strings to free them later...
+        contentType = concat("audio/", "mpeg");
+    } else {
+        contentType = concat("audio/", fileExt);
     }
 
+    ResponseHeader res = responseheader_construct(HTTP_OK, contentType, size);
 
+    if(res.data) {
+        printf("Headers (len %lu): \n%s", res.size, res.data);
+        client_write(clientCon, res.data, res.size);
+
+        printf("sending audio %s\n", uri);
+        client_write(clientCon, audio, size);
+    }
+
+    responseheader_dispose(&res);
+    free(audio);
+    free(contentType);
+    return 0;
 }
 
-static void
-#ifdef HTTP
-client_get_image(i32 clientCon, Header* header) {
-#else
-client_get_image(SSL* clientCon, Header* header) {
-#endif
-
-    //Check file extension to prevent user accessing random files
+static int // -1 error
+client_get_image(ClientHandle clientCon, Header* header) {
     char* uri = header->uri + 1;
     char* fileExt = filename_get_ext(uri);
-    if(!fileExt) {
-        fprintf(stderr, "not file extension found %s\n", uri);
-        return;
+
+    size_t size = 0;
+    void* image = load_binary_file(uri, &size);
+    if(!image) {
+        fprintf(stderr, "Failed to load file %s\n", uri);
+        return -1;
     }
 
-    if(string_list_contains(imageTypes, fileExt)) {
-        size_t size = 0;
-        void* image = load_binary_file(uri, &size);
-        if(!image) {
-            fprintf(stderr, "Failed to load file %s\n", uri);
-            return;
-        }
-
-        char* contentType;
-        if(strcmp(fileExt, "jpg") == 0) {
-            // concat strings to free them later...
-            contentType = concat("image/", "jpeg");
-        } else {
-            contentType = concat("image/", fileExt);
-        }
-
-        ResponseHeader res = responseheader_construct(HTTP_OK, contentType, size);
-
-        if(res.data) {
-            printf("Headers (len %lu): \n%s", res.size, res.data);
-            SSL_write(clientCon, res.data, res.size);
-
-            printf("sending image %s\n", uri);
-            SSL_write(clientCon, image, size);
-        }
-
-        responseheader_dispose(&res);
-        free(image);
-        free(contentType);
+    char* contentType;
+    if(strcmp(fileExt, "jpg") == 0) {
+        // concat strings to free them later...
+        contentType = concat("image/", "jpeg");
+    } else {
+        contentType = concat("image/", fileExt);
     }
+
+    ResponseHeader res = responseheader_construct(HTTP_OK, contentType, size);
+
+    if(res.data) {
+        printf("Headers (len %lu): \n%s", res.size, res.data);
+        client_write(clientCon, res.data, res.size);
+
+        printf("sending image %s\n", uri);
+        client_write(clientCon, image, size);
+    }
+
+    responseheader_dispose(&res);
+    free(image);
+    free(contentType);
+    return 0;
 }
 
 
-static void
-#ifdef HTTP
-client_get_css(i32 clientCon, Header* header) {
-#else
-client_get_css(SSL* clientCon, Header* header) {
-#endif
+static int // -1 error
+client_get_css(ClientHandle clientCon, Header* header) {
     //Check file extension to prevent user accessing random files
     char* uri = header->uri + 1;
-    const char* fileExt = filename_get_ext(uri);
-    if(!fileExt) {
-        fprintf(stderr, "not file extension found %s\n", uri);
-        return;
+
+    size_t lenght = 0;
+    char* cssData = load_file(uri, &lenght);
+    if(!cssData) {
+        fprintf(stderr, "Failed to load file %s\n", uri);
+        return -1;
     }
 
-    if(strcmp(fileExt, "css") == 0) {
-        size_t lenght = 0;
-        char* cssData = load_file(uri, &lenght);
-        if(!cssData) {
-            fprintf(stderr, "Failed to load file %s\n", uri);
-            return;
-        }
+    ResponseHeader res = responseheader_construct(HTTP_OK, "text/css; charset=utf-8l", lenght - 1);
 
-        ResponseHeader res = responseheader_construct(HTTP_OK, "text/css; charset=utf-8l", lenght - 1);
-
-        if(res.data) {
-            printf("Headers (len %lu): \n%s", res.size, res.data);
-            SSL_write(clientCon, res.data, res.size);
-            printf("%s", cssData);
-            SSL_write(clientCon, cssData, lenght - 1);
-        }
-
-        responseheader_dispose(&res);
-        free(cssData);
+    if(res.data) {
+        printf("Headers (len %lu): \n%s", res.size, res.data);
+        client_write(clientCon, res.data, res.size);
+        printf("%s", cssData);
+        client_write(clientCon, cssData, lenght - 1);
     }
+
+    responseheader_dispose(&res);
+    free(cssData);
+    return 0;
 }
 
 static void
-#ifdef HTTP
-client_unknown_page(i32 clientCon) {
-#else
-client_unknown_page(SSL* clientCon) {
-#endif
+client_unknown_page(ClientHandle clientCon) {
     static const char unknownPage[] =
         "<link rel=\"stylesheet\" href=\"style.css\">\n"
         "<b>Unknown page, please go to </b>"
-        "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
+        "<a href=\""
+        SERVER_LOCATION
+        "\">Index</a>\n";
 
     ResponseHeader res = responseheader_construct(HTTP_NOT_FOUND, "text/html; charset=utf-8l",
             sizeof(unknownPage) - 1);
 
     if(res.data) {
         printf("Headers (len %lu): \n%s", res.size, res.data);
-        SSL_write(clientCon, res.data, res.size);
+        client_write(clientCon, res.data, res.size);
 
         printf("%s", unknownPage);
-        SSL_write(clientCon, unknownPage, sizeof(unknownPage) - 1);
+        client_write(clientCon, unknownPage, sizeof(unknownPage) - 1);
 
     }
     responseheader_dispose(&res);
 }
 
 static void
-
-#ifdef HTTP
-client_bad_request(i32 clientCon) {
-#else
-client_bad_request(SSL* clientCon) {
-#endif
-
-    static const char badRequestMsg[] =
+client_not_found(ClientHandle clientCon) {
+    static const char contentNotFound[] =
         "<link rel=\"stylesheet\" href=\"style.css\">\n"
-        "<b>Bad Request 400 </b>"
-        "<a href=\"http://127.0.0.1:12913\">Index</a>\n";
+        "<b>Bad Request 400 </b>\n";
 
-    ResponseHeader res = responseheader_construct(HTTP_BAD_REQUEST, "text/html; charset=utf-8l",
-            sizeof(badRequestMsg) - 1);
+    ResponseHeader res = responseheader_construct(HTTP_NOT_FOUND, "text/html; charset=utf-8l",
+            sizeof(contentNotFound) - 1);
 
     if(res.data) {
         printf("Headers (len %lu): \n%s", res.size, res.data);
-        SSL_write(clientCon, res.data, res.size);
+        client_write(clientCon, res.data, res.size);
 
-        printf("%s", badRequestMsg);
-        SSL_write(clientCon, badRequestMsg, sizeof(badRequestMsg) - 1);
+        printf("%s", contentNotFound);
+        client_write(clientCon, contentNotFound, sizeof(contentNotFound) - 1);
 
     }
     responseheader_dispose(&res);
 }
 
+typedef struct AcceptCallback {
+    char* name;
+    int (*fun)(ClientHandle, Header*);
+} AcceptCallback;
+
+static AcceptCallback Callbacks[] = {
+    {"png", client_get_image},
+    {"jpeg", client_get_image},
+    {"jpg", client_get_image},
+    {"ico", client_get_image},
+    {"wav", client_get_audio},
+    {"css", client_get_css},
+    {NULL, NULL}
+};
+
 static void
-#ifdef HTTP
-client_get(i32 clientCon, Header* header) {
-#else
-client_get(SSL* clientCon, Header* header) {
-#endif
-    HeaderField acceptField;
+client_get(ClientHandle clientCon, Header* header) {
+    //Check file extension to prevent user accessing random files
+    char* uri = header->uri + 1;
+    char* fileExt = filename_get_ext(uri);
 
-    if(header_get_field(&acceptField, header, "Accept") != 0) {
-        fprintf(stderr, "Did not find accept field for post\n");
-        return;
-    }
-
-    // Parse accept fields values
-    char** acceptList = string_split(acceptField.value, ',');
-    if(!acceptList) {
-        fprintf(stderr, "failed to parse acceptList\n");
-        return;
-    }
-
-    if(string_list_contains(acceptList, "text/html") != NULL) { // Get html page
-        if(strcmp(header->uri, "/") == 0) { // Get index
-            client_get_index(clientCon, header);
-        } else if (strcmp(header->uri, "/dev") == 0) { // Get dev
-            client_get_dev(clientCon, header);
-        } else { // unknown page
-            client_unknown_page(clientCon);
+    if(strcmp(header->uri, "/") == 0) { // Get index
+        client_get_index(clientCon, header);
+    } else if (strcmp(header->uri, "/dev") == 0) { // Get dev
+        client_get_dev(clientCon, header);
+    } else if( fileExt != NULL) { // send some file
+        AcceptCallback* callback;
+        for (int i = 0; (Callbacks + i)->name; i++) {
+            if(strcmp((Callbacks + i)->name, fileExt) == 0) {
+                callback = (Callbacks + i);
+            }
         }
-    } else if(string_list_contains(acceptList, "image/webp") != NULL) { // Get image
-        client_get_image(clientCon, header);
-    } else if (string_list_contains(acceptList, "text/css") != NULL) { // Get css
-        client_get_css(clientCon, header);
-    } else if (string_list_contains(acceptList, "audio/wav") != NULL) { // Get css
-        client_get_audio(clientCon, header);
-    } else {
-        client_bad_request(clientCon);
+        if(callback) {
+            if(callback->fun(clientCon, header) == -1) {
+                client_not_found(clientCon);
+            }
+        }
+    } else { // unknown page
+        client_unknown_page(clientCon);
     }
-    string_list_dispose(acceptList);
 }
 
 static void
-#ifdef HTTP
-client_default_method(i32 clientCon) {
-#else
-client_default_method(SSL* clientCon) {
-#endif
-
+client_default_method(ClientHandle clientCon) {
     char buf[] = "HTTP/1.1 500 Not Handled\r\n\r\nThe server has no handler to the request.\r\n";
-    SSL_write(clientCon, buf, sizeof(buf));
+    client_write(clientCon, buf, sizeof(buf));
 }
 
 static void
-#ifdef HTTP
-client_run(i32 clientCon) {
-#else
-client_run(SSL* clientCon) {
-#endif
+client_run(ClientHandle clientCon) {
     // handle client request
     //TODO poista
     char* buf = malloc(65535);
 
-    int numCharacters = SSL_read(clientCon, buf, 65535);
+    int numCharacters = client_read(clientCon, buf, 65535);
     if(numCharacters <= 0) {
         ERR_print_errors_fp(stderr);
         return;
@@ -866,7 +717,7 @@ client_run(SSL* clientCon) {
 
 
             while (numCharacters < len) {
-                u32 temp = SSL_read(clientCon, buf + numCharacters, 65535 - numCharacters);
+                u32 temp = client_read(clientCon, buf + numCharacters, 65535 - numCharacters);
 
                 if(temp <= 0) {
                     ERR_print_errors_fp(stderr);
@@ -1079,7 +930,7 @@ server_run(SSL_CTX *ctx) {
                 printf("No certificates.\n");
             }// TODO reject connection?
 
-            //SSL_write(ssl, reply, strlen(reply));
+            //client_write(ssl, reply, strlen(reply));
 #endif
             client_start(ssl, clientfd);
         } else if (FD_ISSET(fds[1], &readfds)) { // http
