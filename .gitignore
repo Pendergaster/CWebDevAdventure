@@ -19,7 +19,6 @@ s (258 sloc)  5.31 KB
 [Dd]ebug/
 debuglibs/
 releaselibs/
-include/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
