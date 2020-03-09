@@ -111,7 +111,6 @@ main(int argc, char** argv) {
     SSL_library_init();
     ctx = ssl_create_context();
 
-
     ssl_configure_context(ctx);
 #endif
     if (argc == 2) {
@@ -489,7 +488,6 @@ client_get_dev(ClientHandle clientCon, Header* header) {
         printf("%s", data);
         client_write(clientCon, data, contentLen);
     }
-
     responseheader_dispose(&res);
 }
 
@@ -567,32 +565,53 @@ client_get_image(ClientHandle clientCon, Header* header) {
     return 0;
 }
 
+static int //-1 error
+client_send_text_file(ClientHandle clientCon, Header* header, char* contentType) {
 
-static int // -1 error
-client_get_css(ClientHandle clientCon, Header* header) {
     //Check file extension to prevent user accessing random files
     char* uri = header->uri + 1;
 
     size_t lenght = 0;
-    char* cssData = load_file(uri, &lenght);
-    if(!cssData) {
+    char* file = load_file(uri, &lenght);
+    if(!file) {
         fprintf(stderr, "Failed to load file %s\n", uri);
         return -1;
     }
 
-    ResponseHeader res = responseheader_construct(HTTP_OK, "text/css; charset=utf-8l", lenght - 1);
+    ResponseHeader res = responseheader_construct(HTTP_OK, contentType, lenght - 1);
 
     if(res.data) {
         printf("Headers (len %lu): \n%s", res.size, res.data);
         client_write(clientCon, res.data, res.size);
-        printf("%s", cssData);
-        client_write(clientCon, cssData, lenght - 1);
+        //printf("%s", file); lets not print large files
+        client_write(clientCon, file, lenght - 1);
     }
 
     responseheader_dispose(&res);
-    free(cssData);
+    free(file);
     return 0;
 }
+
+static int // -1 error
+client_get_css(ClientHandle clientCon, Header* header) {
+
+    return client_send_text_file(clientCon, header,  "text/css; charset=utf-8l");
+}
+
+static int // -1 error
+client_get_html(ClientHandle clientCon, Header* header) {
+
+    printf("Getting html!");
+    return client_send_text_file(clientCon, header,  "text/html; charset=utf-8l");
+}
+
+static int // -1 error
+client_get_js(ClientHandle clientCon, Header* header) {
+
+    printf("Getting javascript!");
+    return client_send_text_file(clientCon, header,  "text/javascript; charset=utf-8l");
+}
+
 
 static void
 client_unknown_page(ClientHandle clientCon) {
@@ -649,6 +668,8 @@ static AcceptCallback Callbacks[] = {
     {"ico", client_get_image},
     {"wav", client_get_audio},
     {"css", client_get_css},
+    {"html", client_get_html},
+    {"js", client_get_js},
     {NULL, NULL}
 };
 
@@ -663,19 +684,28 @@ client_get(ClientHandle clientCon, Header* header) {
     } else if (strcmp(header->uri, "/dev") == 0) { // Get dev
         client_get_dev(clientCon, header);
     } else if( fileExt != NULL) { // send some file
-        AcceptCallback* callback;
+        AcceptCallback* callback = NULL;
         for (int i = 0; (Callbacks + i)->name; i++) {
             if(strcmp((Callbacks + i)->name, fileExt) == 0) {
                 callback = (Callbacks + i);
+                break;
             }
         }
         if(callback) {
             if(callback->fun(clientCon, header) == -1) {
                 client_not_found(clientCon);
             }
+        } else {
+            client_not_found(clientCon);
         }
-    } else { // unknown page
-        client_unknown_page(clientCon);
+    } else { // unknown page or html
+        // Check if it is html page
+
+        header->uri = concat(header->uri, ".html");
+        if(client_get_html(clientCon, header) == -1) {
+            client_unknown_page(clientCon);
+        }
+        free(header->uri);
     }
 }
 

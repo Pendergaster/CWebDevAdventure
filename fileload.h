@@ -27,9 +27,12 @@ load_binary_file(char* const path, size_t* fileSize) {
 
 static inline char*
 load_file(char* const path, size_t* fileSize) {
-    char* data = _load_file(path,"r", fileSize);
-    *fileSize -= 1;
-    data[*fileSize] = '\0';
+    size_t size;
+    char* data = _load_file(path,"r", &size);
+    if(!data) return NULL;
+    size -= 1;
+    data[size] = '\0';
+    if(fileSize) *fileSize = size;
     return data;
 }
 
