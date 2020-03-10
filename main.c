@@ -17,7 +17,6 @@
 #include "fileload.h"
 #include "stringutil.h"
 #include "httpheaderdefs.h"
-#include "markdown_parser.h"
 
 typedef struct HeaderField {
     char* name, *value;
@@ -619,6 +618,33 @@ client_get_js(ClientHandle clientCon, Header* header) {
     return client_send_text_file(clientCon, header,  "text/javascript; charset=utf-8l");
 }
 
+static int // -1 error
+client_get_mem(ClientHandle clientCon, Header* header) {
+
+    char* uri = header->uri + 1;
+    char* fileExt = filename_get_ext(uri);
+
+    size_t size = 0;
+    void* mem = load_binary_file(uri, &size);
+    if(!mem) {
+        fprintf(stderr, "Failed to load file %s\n", uri);
+        return -1;
+    }
+
+    ResponseHeader res = responseheader_construct(HTTP_OK, "application/octet-stream", size);
+
+    if(res.data) {
+        printf("Headers (len %lu): \n%s", res.size, res.data);
+        client_write(clientCon, res.data, res.size);
+
+        printf("sending mem %s\n", uri);
+        client_write(clientCon, mem, size);
+    }
+
+    responseheader_dispose(&res);
+    free(mem);
+    return 0;
+}
 
 static void
 client_unknown_page(ClientHandle clientCon) {
@@ -677,6 +703,7 @@ static AcceptCallback Callbacks[] = {
     {"css", client_get_css},
     {"html", client_get_html},
     {"js", client_get_js},
+    {"mem", client_get_mem},
     {NULL, NULL}
 };
 
