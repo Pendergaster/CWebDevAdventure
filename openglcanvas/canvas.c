@@ -284,6 +284,16 @@ float last_time = 0.f;
 static void motocross_update_and_render(float dt);
 Background background = Background_motocross;
 
+#if defined(__EMSCRIPTEN__)
+EM_JS(int, canvas_x, (), {
+    return window.innerWidth;
+});
+
+EM_JS(int, canvas_y, (), {
+    return window.innerHeight;
+});
+#endif
+
 void main_loop() {
 	static u8 init = 1;
     static float timer = 0.f;
@@ -296,10 +306,19 @@ void main_loop() {
     last_time = current_time;
     timer += dt * 0.5f;
 
+
+
     // printf("dt %f\n", dt);
 
 	if (init) {
         // glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+
+#if defined(__EMSCRIPTEN__)
+        int x = canvas_x();
+        int y = canvas_y();
+        window_on_resize(x, y);
+#endif
+
         srand(time(NULL));
         background = rand() % Background_max;
 		init = 0;

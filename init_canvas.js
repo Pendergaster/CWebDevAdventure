@@ -25,12 +25,11 @@ var Module = {
 var start_function = function(o) {
     //    document.getElementById("fullScreenButton").style.visibility="visible";
     Module.ccall('mainf', null, null);
-    console.log('asfd')
 };
 
 var script = document.createElement('script');
 script.src = "index.js";
-document.body.appendChild(script);
+
 
 // When the user scrolls the page, execute myFunction
 window.onscroll = function() {myFunction()};
