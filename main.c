@@ -17,6 +17,7 @@
 #include "fileload.h"
 #include "stringutil.h"
 #include "httpheaderdefs.h"
+#include "markdown_parser.h"
 
 typedef struct HeaderField {
     char* name, *value;
@@ -76,7 +77,8 @@ ssl_create_context() {
     return ctx;
 }
 
-void ssl_configure_context(SSL_CTX *ctx) {
+static void
+ssl_configure_context(SSL_CTX *ctx) {
 
     if (SSL_CTX_set_ecdh_auto(ctx, 1) != 1) {
         ERR_print_errors_fp(stderr);
