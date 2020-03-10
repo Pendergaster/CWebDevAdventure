@@ -15,7 +15,7 @@ var Module = {
 			canvas.width  = window.innerWidth;
 			canvas.height = window.innerHeight;
 		}
-		window_on_resize(window.innerWidth, window.innerHeight)
+		
     },
     canvas: (function() {
         var canvas = document.getElementById('canvas');
@@ -26,11 +26,12 @@ var Module = {
 var start_function = function(o) {
     //    document.getElementById("fullScreenButton").style.visibility="visible";
     Module.ccall('mainf', null, null);
+	
 };
 
 var script = document.createElement('script');
 script.src = "index.js";
-document.body.appendChild(script);
+
 
 
 
