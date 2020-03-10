@@ -295,13 +295,13 @@ parse_payload(const char* payload) {
     return result;
 }
 
-static void
+static int // -1 err
 compile_and_run_string(const char* code, int* size_out) {
 
     TCCState* state = tcc_new();
     if (!state) {
         printf("could not create state\n");
-        return;
+        return -1;
     }
     // tcc_set_lib_path(state, "./");
     // tcc_add_include_path(state, "./");
@@ -309,7 +309,7 @@ compile_and_run_string(const char* code, int* size_out) {
     tcc_set_options(state, "-w -m64 -std=c99 -bench");
 
     if (tcc_compile_string(state, code) == -1) {
-        return;
+        return -1;
     }
 
     tcc_add_library(state, "tcc");
@@ -335,6 +335,7 @@ compile_and_run_string(const char* code, int* size_out) {
 
     tcc_delete(state);
     free(mem);
+    return 0;
 }
 
 int pipe_fd[2];
@@ -386,7 +387,12 @@ client_post(ClientHandle clientCon, Header* header) {
             int saved_stderr;
             saved_stderr = dup(STDERR_FILENO);
             dup2(pipe_fd[1], STDERR_FILENO);
-            compile_and_run_string(rst, &size_out);
+            int suc = compile_and_run_string(rst, &size_out);
+            if(suc == 0) {
+                printf("\n<img src=\"thumpup.png\" alt=\"success!\" width=\"100\" height=\"100\">\n");
+            } else {
+                printf("\n<img src=\"thumpdown.png\" alt=\"failed\" width=\"100\" height=\"100\">\n");
+            }
             dup2(saved_stderr, STDERR_FILENO);
             close(saved_stderr);
         }

@@ -9,11 +9,14 @@ pre {
     display:inline-block
 }
 
-img {
-    max-width:57ch;
-    display:block;
-    height:auto;
-    width:100%
+div img {
+
+    position:absolute;
+    top:0;
+    left:0;
+    right:0;
+    bottom:0;
+    margin:auto;
 }
 
 @media(prefers-color-scheme:dark) {
