@@ -371,7 +371,12 @@ client_post(ClientHandle clientCon, Header* header) {
         printf("<link rel=\"stylesheet\" href=\"style.css\">\n");
         printf("</head>");
 
+
         printf(navigation_menu_str);
+        printf("<canvas class=\"game\" id=\"canvas\" oncontextmenu=\"event.preventDefault()\" "
+               "style=\"width: 100%%; height:100%%;\"></canvas>");
+
+        printf("<script type=\"text/javascript\" src=\"init_canvas.js\"> </script>");
 
         int size_out = 0;
         printf("<pre>");
