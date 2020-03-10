@@ -11,13 +11,15 @@
 #if !defined(__EMSCRIPTEN__)
 #include "include/glad/glad.h"
 #include <GLFW/glfw3native.h>
-#endif
-
 #include <GLFW/glfw3.h>
+
+static GLFWwindow* window = 0;
+#endif
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #include <emscripten/html5.h>
+#include <emscripten/key_codes.h>
 #include <GLES3/gl3.h>
 #define GL_GLEXT_PROTOTYPES
 #define EGL_EGLEXT_PROTOTYPES
@@ -165,7 +167,6 @@ static void main_loop();
 static void motocross_debug_render();
 u32 shader;
 u32 shader_time_loc;
-GLFWwindow* window;
 
 u32 shader_star;
 u32 shader_star_time_loc;
@@ -183,7 +184,14 @@ static float lerp(float a, float b, float t) {
 }
 static void motocross_game_render();
 
-int main() {
+typedef enum {
+    Key_W, Key_S, Key_A, Key_D, Key_Space, 
+    Key_Max
+} Keycode;
+
+
+#if !defined (__EMSCRIPTEN__)
+static void init_gl_desktop() {
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
@@ -199,12 +207,119 @@ int main() {
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         printf("Failed to initialize GLAD\n");
         exit(EXIT_FAILURE);
-        return 0;
     }
 #endif 
-    glViewport(0, 0, SCREENWIDHT, SCREENHEIGHT);
     glfwSetErrorCallback(error_callback);
 
+}
+
+// quick and dirty inputs
+static u8 isKeyDown(Keycode key) {
+    int scancode;
+    switch (key) {
+        case Key_W: 
+            scancode = GLFW_KEY_W;
+            break;
+        case Key_S: 
+            scancode = GLFW_KEY_S;
+			break;
+        case Key_A: 
+            scancode = GLFW_KEY_A;
+			break;
+        case Key_D: 
+            scancode = GLFW_KEY_D;
+			break;
+        case Key_Space:
+            scancode = GLFW_KEY_SPACE;
+			break;
+        default:
+            return;
+    }
+
+    return glfwGetKey(window, scancode) == GLFW_PRESS;
+}
+#endif
+
+#if defined(__EMSCRIPTEN__)
+u8 keys_down[Key_Max] = { 0 };
+EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent* e, void* userData)
+{
+    // int dom_pk_code = emscripten_compute_dom_pk_code(e->code);
+
+    Keycode code = Key_Max;
+    switch (e->keyCode)
+    {
+    case DOM_VK_SPACE:
+        code = Key_Space;
+        break;
+    case DOM_VK_A:
+        code = Key_A;
+        break;
+    case DOM_VK_D:
+        code = Key_D;
+        break;
+    case DOM_VK_W:
+        code = Key_W;
+        break;
+    case DOM_VK_S:
+        code = Key_S;
+        break;
+    default:
+        return 0;  
+    }
+
+    if (eventType  == EMSCRIPTEN_EVENT_KEYUP) {
+        printf("%i up\n", code);
+        keys_down[code] = 0;
+    } else if (eventType  == EMSCRIPTEN_EVENT_KEYDOWN) {
+        printf("%i down\n", code);
+        keys_down[code] = 1;
+    }
+
+    return 0;
+}
+
+// quick and dirty inputs
+static u8 isKeyDown(Keycode key) {
+    if (key >= 0 && key < Key_Max) {
+        return keys_down[key];
+    }
+    return 0;
+}
+
+EMSCRIPTEN_WEBGL_CONTEXT_HANDLE glContext;
+static void init_webgl() {
+    EmscriptenWebGLContextAttributes attrs;
+    emscripten_webgl_init_context_attributes(&attrs);
+    attrs.alpha = 0;
+#if MAX_WEBGL_VERSION >= 2
+#endif
+    attrs.majorVersion = 2;
+
+    glContext = emscripten_webgl_create_context("canvas", &attrs);
+    if (!glContext) {
+        printf("gl context cretion failed\n");
+    }
+
+    emscripten_webgl_make_context_current(glContext);
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 1, key_callback);
+    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 1, key_callback);
+    emscripten_set_keypress_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, 1, key_callback);
+
+}
+
+#endif
+
+
+int main() {
+
+#if defined(__EMSCRIPTEN__)
+    init_webgl();
+#else
+    init_gl_desktop();
+#endif
+
+    glViewport(0, 0, SCREENWIDHT, SCREENHEIGHT);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(1.0, 1.0, 1.0, 1.0);
@@ -252,26 +367,34 @@ void emscripten_resize()
     // emscripten_set_resize_callback(0, 0, 0, emscWindowSizeChanged);
 }
 */
-void window_on_resize(int x, int y) {
-    printf("hello from c %i %i \n", x, y);
-    resolution[0] = x;
-    resolution[1] = y;
-    glfwSetWindowSize(window, x, y);
-    glViewport(0, 0, x, y);
-}
-// void emscWindowSizeChanged(int x, int y) {
-// }
 
-void framebuffer_size_callback(GLFWwindow* window, int width, int height)
-{
-    // make sure the viewport matches the new window dimensions; note that width and 
-    // height will be significantly larger than specified on retina displays.
-    int x = width;
-    int y = height;
-    printf("hello from c %i %i \n", x, y);
+#if defined(__EMSCRIPTEN__)
+EM_JS(int, canvas_x, (), {
+    return window.innerWidth;
+});
+
+EM_JS(int, canvas_y, (), {
+    return window.innerHeight;
+});
+
+    // Module.canvas.width = x;
+    // Module.canvas.height = y;
+EM_JS(void, canvas_set_size, (int x, int y), {
+    canvas.width = x;
+    canvas.height = y;
+});
+#endif
+
+void window_on_resize(int x, int y) {
+    // printf("hello from c %i %i \n", x, y);
     resolution[0] = x;
     resolution[1] = y;
+    
+#if defined(_WIN32)
     glfwSetWindowSize(window, x, y);
+#else
+    canvas_set_size(x, y);
+#endif
     glViewport(0, 0, x, y);
 }
 
@@ -282,26 +405,20 @@ typedef enum {
 } Background;
 float last_time = 0.f;
 static void motocross_update_and_render(float dt);
-Background background = Background_motocross;
-
-#if defined(__EMSCRIPTEN__)
-EM_JS(int, canvas_x, (), {
-    return window.innerWidth;
-});
-
-EM_JS(int, canvas_y, (), {
-    return window.innerHeight;
-});
-#endif
+Background background = Background_star;
 
 void main_loop() {
 	static u8 init = 1;
     static float timer = 0.f;
 
+#if defined(__EMSCRIPTEN__)
+    float current_time = emscripten_performance_now() / 1000.f;
+#else
     glfwPollEvents();
-
-
     float current_time = glfwGetTime();
+#endif
+
+
     float dt = current_time - last_time;
     last_time = current_time;
     timer += dt * 0.5f;
@@ -311,16 +428,16 @@ void main_loop() {
     // printf("dt %f\n", dt);
 
 	if (init) {
-        // glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
 #if defined(__EMSCRIPTEN__)
         int x = canvas_x();
         int y = canvas_y();
         window_on_resize(x, y);
+        printf("error %i %i\n", x, y);
 #endif
 
         srand(time(NULL));
         background = rand() % Background_max;
+        background = Background_motocross;
 		init = 0;
 		glGenVertexArrays(1, &vao);
 		GLuint vbo;
@@ -400,14 +517,16 @@ void main_loop() {
 #endif
   
 	
+#if defined(_WIN32)
 	glfwSwapBuffers (window);
+    glfwSwapInterval(1);
+#endif
 	
 #if 0
 	printf("%s %i %i\n\n %s\n", star_field_vert, strlen(star_field_vert), 
 		strlen("void mainImage( out vec4 fragColor, in vec2 fragCoord ) { vec2 uv=fragCoord.xy/iResolution.xy-.5; uv.y*=iResolution.y/iResolution.x; vec3 dir=vec3(uv*zoom,1.); float time=iTime*speed+.25; float a1=.5+iMouse.x/iResolution.x*2.; float a2=.8+iMouse.y/iResolution.y*2.; mat2 rot1=mat2(cos(a1),sin(a1),-sin(a1),cos(a1)); mat2 rot2=mat2(cos(a2),sin(a2),-sin(a2),cos(a2)); dir.xz*=rot1; dir.xy*=rot2; vec3 from=vec3(1.,.5,0.5); from+=vec3(time*2.,time,-2.); from.xz*=rot1; from.xy*=rot2; float s=0.1,fade=1.; vec3 v=vec3(0.); for (int r=0; r<volsteps; r++) { vec3 p=from+s*dir*.5; p = abs(vec3(tile)-mod(p,vec3(tile*2.))); float pa,a=pa=0.; for (int i=0; i<iterations; i++) { p=abs(p)/dot(p,p)-formuparam; a+=abs(length(p)-pa); pa=length(p); } float dm=max(0.,darkmatter-a*a*.001); a*=a*a; if (r>6) fade*=1.-dm; v+=fade; v+=vec3(s,s*s,s*s*s*s)*a*brightness*fade; fade*=distfading; s+=stepsize; } v=mix(vec3(length(v)),v,saturation); fragColor = vec4(v*.01,1.); }")
 			, star_field_frag);
 #endif
-    glfwSwapInterval(1);
 }
 
 typedef struct {

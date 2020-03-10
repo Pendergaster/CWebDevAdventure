@@ -1,1 +1,2 @@
-emcc canvas.c -O3 -o index.html -s USE_WEBGL2=1 -s USE_GLFW=3 -s WASM=0 -s EXPORTED_FUNCTIONS="['_window_on_resize', '_main']"  -s EXTRA_EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap']"  --embed-file asset_dir@/ -s INITIAL_MEMORY=33554432 
+emcc canvas.c  -o index.html -O3 -s USE_WEBGL2=1  -s WASM=0 -s EXPORTED_FUNCTIONS="['_window_on_resize', '_main']"  -s EXTRA_EXPORTED_RUNTIME_METHODS="['ccall', 'cwrap']"  --embed-file asset_dir@/ -s INITIAL_MEMORY=33554432 
+:: -s USE_GLFW=3

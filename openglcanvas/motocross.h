@@ -272,17 +272,17 @@ static void motocross_update(float dt) {
     float y = 0.f;
     float speed = player->speed;
 
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+    if (isKeyDown(Key_W)) {
         dir -= 1.0f;
     }
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+    if (isKeyDown(Key_S)) {
         dir += 1.0f;
     }
 
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+    if (isKeyDown(Key_A)) {
         rot += 0.025f;
     }
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+    if (isKeyDown(Key_D)) {
         rot -= 0.025f;
     }
 
@@ -341,7 +341,7 @@ static void motocross_update(float dt) {
 
     motocross_physics(dt);
 
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+    if (isKeyDown(Key_Space)) {
         player->wheelie_acc += WHEELIE_ACC;
     }
     else {
