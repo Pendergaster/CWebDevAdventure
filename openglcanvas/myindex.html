@@ -73,9 +73,6 @@
 
 
 <body>
-
-
-
     <!---
         <div class="top-container">
         <h1>Scroll Down</h1>
@@ -114,22 +111,44 @@
         var start_function = function(o) {
         //    o.style.visibility = "hidden";
         //    document.getElementById("fullScreenButton").style.visibility="visible";
-        Module.ccall('mainf', null, null);
+			Module.ccall('main', null, null);
         };
+
+
+		(function() {
+            var memoryInitializer = 'index.html.mem';
+            if (typeof Module['locateFile'] === 'function') {
+              memoryInitializer = Module['locateFile'](memoryInitializer);
+            } else if (Module['memoryInitializerPrefixURL']) {
+              memoryInitializer = Module['memoryInitializerPrefixURL'] + memoryInitializer;
+            }
+            var xhr = Module['memoryInitializerRequest'] = new XMLHttpRequest();
+            xhr.open('GET', memoryInitializer, true);
+            xhr.responseType = 'arraybuffer';
+            xhr.send(null);
+        })();
+
 
         var script = document.createElement('script');
         script.src = "index.js";
         document.body.appendChild(script);
+		
+	//  start_function();
 
-        window.onload = window.onresize = function() {
+    window.onload = window.onresize = function() {
         window_on_resize(window.innerWidth, window.innerHeight);
         console.log("canvas " + Module.canvas.width + " " + canvas.height);
         canvas.width  = window.innerWidth;
         canvas.height = window.innerHeight;
-        }
+ 
+	} 
 
     </script>
-    <script>
+    
+	
+	<!-- header scroll -->
+	<script>
+	
         // When the user scrolls the page, execute myFunction
         window.onscroll = function() {myFunction()};
 
