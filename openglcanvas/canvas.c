@@ -6,7 +6,7 @@
 #include <string.h>
 #include <assert.h>
 #include <math.h>
-
+#include <time.h>
 
 #if !defined(__EMSCRIPTEN__)
 #include "include/glad/glad.h"
@@ -178,6 +178,9 @@ u32 vao = -1;
 u32 image_vao = -1;
 // u32 shader_star_time_loc;
 
+static float lerp(float a, float b, float t) {
+    return a + (b - a) * t;
+}
 static void motocross_game_render();
 
 int main() {
@@ -259,26 +262,46 @@ void window_on_resize(int x, int y) {
 // void emscWindowSizeChanged(int x, int y) {
 // }
 
+void framebuffer_size_callback(GLFWwindow* window, int width, int height)
+{
+    // make sure the viewport matches the new window dimensions; note that width and 
+    // height will be significantly larger than specified on retina displays.
+    int x = width;
+    int y = height;
+    printf("hello from c %i %i \n", x, y);
+    resolution[0] = x;
+    resolution[1] = y;
+    glfwSetWindowSize(window, x, y);
+    glViewport(0, 0, x, y);
+}
 
-float end_time = 0.f;
+typedef enum {
+    Background_motocross,
+    Background_star,
+    Background_max
+} Background;
+float last_time = 0.f;
+static void motocross_update_and_render(float dt);
+Background background = Background_motocross;
 
 void main_loop() {
 	static u8 init = 1;
-    static float time = 0.f;
+    static float timer = 0.f;
 
     glfwPollEvents();
 
 
     float current_time = glfwGetTime();
-    float dt = current_time - end_time;
-    time += dt * 0.5f;
-#if defined(_WIN32)
-    dt *= 1000.f;
-#endif
+    float dt = current_time - last_time;
+    last_time = current_time;
+    timer += dt * 0.5f;
 
     // printf("dt %f\n", dt);
 
 	if (init) {
+        // glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+        srand(time(NULL));
+        background = rand() % Background_max;
 		init = 0;
 		glGenVertexArrays(1, &vao);
 		GLuint vbo;
@@ -331,36 +354,32 @@ void main_loop() {
 		glBufferData(GL_ARRAY_BUFFER, sizeof(uvs), uvs, GL_STATIC_DRAW);
 	}
 	
-    // Refactor these bad boys into the Backgrounds
-#if 1
-    // glClearDepth(1.0);
     glClearColor(0.1, 0.1, 0.1, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    if (background == Background_motocross) {
+        glBindVertexArray(image_vao);
+        motocross_update_and_render(dt * 100.f);
+	    glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+    else if (background == Background_star) {
+        glUseProgram(shader_star);
+        glUniform1f(shader_star_time_loc, timer);
+#if defined _WIN32
+		resolution[0] = SCREENWIDHT;
+		resolution[1] = SCREENHEIGHT;
+#endif
+		glUniform2f(shader_star_resolution_loc, (float)resolution[0], (float)resolution[1]);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+
+#if 0 // test cody
 	glUseProgram(shader);
 	glUniform1f(shader_time_loc, 0.5f);
-
 	glBindVertexArray(vao);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 #endif
-
-    glUseProgram(shader_star);
-    glUniform1f(shader_star_time_loc, time);
-#if defined _WIN32
-    resolution[0] = SCREENWIDHT;
-    resolution[1] = SCREENHEIGHT;
-#endif
-    glUniform2f(shader_star_resolution_loc, (float)resolution[0], (float)resolution[1]);
-	glDrawArrays(GL_TRIANGLES, 0, 6);
-
-
-    static u8 moto_test = 1;
-    if (moto_test) {
-        motocross_game_render();
-    }
   
-    glBindVertexArray(image_vao);
-    motocross_debug_render();
-	glDrawArrays(GL_TRIANGLES, 0, 6);
 	
 	glfwSwapBuffers (window);
 	
@@ -370,7 +389,6 @@ void main_loop() {
 			, star_field_frag);
 #endif
     glfwSwapInterval(1);
-    end_time = glfwGetTime();
 }
 
 typedef struct {
@@ -388,6 +406,9 @@ static Vec2 vec2_mul_scl(Vec2 a, float scalar) {
     return (Vec2) { a.x* scalar, a.y* scalar };
 }
 static Vec2 vec2_norm(Vec2 a) {
+    if ( (a.x * a.x + a.y * a.y) <= 0.f) {
+        return (Vec2) { 0.f, 0.f };
+    }
     float len = sqrt(a.x * a.x + a.y * a.y);
     return (Vec2) { len* a.x, len* a.y };
 }
@@ -412,9 +433,13 @@ int c_map_fmt = 0;
 
 void draw_vertical_line(int x, int height_on_screen, int screen_h, Rgb col);
 
+static Rgb lerp_col(Rgb a, Rgb b, float t) {
+    return  (Rgb) { lerp(a.r, b.r, t), lerp(a.g, b.g, t), lerp(a.b, b.b, t) };
+}
+
 static int debug_frame = 0;
 static void render_rot(Vec2 p, float phi, int h, int horizon,
-    int scale_height, int distance, int screen_w, int screen_h, Vec2 cam) {
+    int scale_height, int distance, int screen_w, int screen_h) {
 
 
     int iters = 0;
@@ -452,10 +477,10 @@ static void render_rot(Vec2 p, float phi, int h, int horizon,
             int x = (int)pleft.x;
             int y = (int)pleft.y;                                          
 
-            int xx = (int)pleft.x ;
-            int yy = (int)pleft.y ;                                           
             // 10^2 == 1024
-            int index = ((((yy) & 1023) << 10) + (((xx)) & 1023));
+            // 1024-1
+            int index = ((y & 1023) << 10) + (x & 1023);
+
 
             int ind = index;
             float height_on_screen = (h - height_map[ind].r) / z * scale_height + horizon;
@@ -475,6 +500,25 @@ static void render_rot(Vec2 p, float phi, int h, int horizon,
         if (++iters == debug_frame)
             return;
     }
+
+
+#if 0
+    Rgb start = { 189.f / 255.f, 222.f / 255.f, 255.f/255.f };
+    Rgb end   = { 0.f, 0.f, 255.f };
+    for (int j = 0; j < SCREEN_H; j++) {
+        for (int i = 0; i < SCREEN_W; i++) {
+
+            if (ybuffer[i] < j)
+                continue;
+
+            float t = (float)j / SCREEN_H;
+            Rgb c = lerp_col(start, end, t);
+            screen[(i * 3) + (j * SCREEN_W * 3) + 0] = c.r;
+            screen[(i * 3) + (j * SCREEN_W * 3) + 1] = c.g;
+            screen[(i * 3) + (j * SCREEN_W * 3) + 2] = c.b;
+        }
+    }
+#endif
 }
 
 #include "motocross.h"
@@ -493,7 +537,8 @@ void draw_vertical_line(int x, int top, int bot, Rgb col) {
 }
 
 static void* png_load(const char* filename, int* x_out, int* y_out, int* fmt_out);
-static void motocross_game_render() {
+static void motocross_debug_render();
+static void motocross_update_and_render(float dt) {
    
 
     static u8 load_image = 1;
@@ -506,8 +551,9 @@ static void motocross_game_render() {
         screen = malloc(SCREEN_W * SCREEN_H * 3 * sizeof(u8));
     }
 
-    motocross_update();
+    motocross_update(dt);
     motocross_render();
+    motocross_debug_render();
 }
 
 static void motocross_debug_render() {
@@ -516,6 +562,7 @@ static void motocross_debug_render() {
     static u8 init = 1;
    
     if (init) {
+        window_on_resize(SCREENWIDHT, SCREENHEIGHT);
         init = 0;
         glGenTextures(1, &texture);
         glBindTexture(GL_TEXTURE_2D, texture);
@@ -529,11 +576,18 @@ static void motocross_debug_render() {
         glGenerateMipmap(GL_TEXTURE_2D);
     }
     else {
-        // TODO: If changed
-        // TODO: glSubTexImage
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_W, SCREEN_H, 0, GL_RGB, GL_UNSIGNED_BYTE,
-            screen);
-            // screen);
+
+        if (motocross.rerender) {
+            glTexSubImage2D(GL_TEXTURE_2D,
+                0,
+                0,
+                0,
+                SCREEN_W,
+                SCREEN_H,
+                GL_RGB,
+                GL_UNSIGNED_BYTE,
+                screen);
+        }
     }
 
     glUseProgram(shader_image);
