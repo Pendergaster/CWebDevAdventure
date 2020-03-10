@@ -8,6 +8,13 @@ var Module = {
         // var e = document.getElementById('loadingDiv');
         // e.style.visibility = 'hidden';
         window_on_resize = Module.cwrap('window_on_resize', 'void', ['number', 'number'])
+		
+		window.onload = window.onresize = function() {
+			window_on_resize(window.innerWidth, window.innerHeight);
+			console.log("canvas " + Module.canvas.width + " " + canvas.height);
+			canvas.width  = window.innerWidth;
+			canvas.height = window.innerHeight;
+		}
     },
     canvas: (function() {
         var canvas = document.getElementById('canvas');
@@ -20,29 +27,10 @@ var start_function = function(o) {
     Module.ccall('mainf', null, null);
 };
 
-(function() {
-    var memoryInitializer = 'index.html.mem';
-    if (typeof Module['locateFile'] === 'function') {
-        memoryInitializer = Module['locateFile'](memoryInitializer);
-    } else if (Module['memoryInitializerPrefixURL']) {
-        memoryInitializer = Module['memoryInitializerPrefixURL'] + memoryInitializer;
-    }
-    var xhr = Module['memoryInitializerRequest'] = new XMLHttpRequest();
-    xhr.open('GET', memoryInitializer, true);
-    xhr.responseType = 'arraybuffer';
-    xhr.send(null);
-})();
-
 var script = document.createElement('script');
 script.src = "index.js";
 document.body.appendChild(script);
 
-window.onload = window.onresize = function() {
-    window_on_resize(window.innerWidth, window.innerHeight);
-    console.log("canvas " + Module.canvas.width + " " + canvas.height);
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
 
 // When the user scrolls the page, execute myFunction
 window.onscroll = function() {myFunction()};
