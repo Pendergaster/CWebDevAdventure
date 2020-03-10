@@ -29,6 +29,7 @@ var start_function = function(o) {
 
 var script = document.createElement('script');
 script.src = "index.js";
+document.body.appendChild(script);
 
 
 // When the user scrolls the page, execute myFunction
