@@ -16,6 +16,9 @@
 static GLFWwindow* window = 0;
 #endif
 
+// #define SCREEN_FLIP_OPT 0
+// #define INTENSE_OPT 0
+
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -37,28 +40,36 @@ typedef int16_t     i16;
 typedef uint8_t     u8;
 typedef int8_t      i8;
 
-u32 SCREENWIDHT  = 860;
+u32 SCREENWIDHT = 860;
 u32 SCREENHEIGHT = 640;
 
-GLenum glCheckError_(const char *file, int line)
+#ifndef MAX 
+#define MAX(x, y) ((x) >= (y) ? (x) : (y))
+#endif
+#ifndef MIN
+#define MIN(x, y) ((x) <= (y) ? (x) : (y))
+#endif
+
+
+GLenum glCheckError_(const char* file, int line)
 {
     GLenum errorCode;
     while ((errorCode = glGetError()) != GL_NO_ERROR) {
         const char* error = NULL;
         switch (errorCode) {
-            case GL_INVALID_ENUM:                  error = "INVALID_ENUM"; break;
-            case GL_INVALID_VALUE:                 error = "INVALID_VALUE"; break;
-            case GL_INVALID_OPERATION:             error = "INVALID_OPERATION"; break;
-            case GL_OUT_OF_MEMORY:                 error = "OUT_OF_MEMORY"; break;
-            case GL_INVALID_FRAMEBUFFER_OPERATION: error = "INVALID_FRAMEBUFFER_OPERATION"; break;
+        case GL_INVALID_ENUM:                  error = "INVALID_ENUM"; break;
+        case GL_INVALID_VALUE:                 error = "INVALID_VALUE"; break;
+        case GL_INVALID_OPERATION:             error = "INVALID_OPERATION"; break;
+        case GL_OUT_OF_MEMORY:                 error = "OUT_OF_MEMORY"; break;
+        case GL_INVALID_FRAMEBUFFER_OPERATION: error = "INVALID_FRAMEBUFFER_OPERATION"; break;
         }
-        printf("GL ERROR file %s line %d error: %s \n", file, line,error);
+        printf("GL ERROR file %s line %d error: %s \n", file, line, error);
     }
     return errorCode;
 }
 #define glCheckError() glCheckError_(__FILE__, __LINE__)
 
-static void error_callback(int e, const char *d) {
+static void error_callback(int e, const char* d) {
     printf("Error %d: %s\n", e, d);
 }
 
@@ -68,26 +79,26 @@ const char* vertex = {
         "layout (location = 0) in vec2   pos;                                \n"
         "uniform float time;                                                 \n"
         "uniform mat4 P;                                                     \n"
-        
-		
-		//"out DATA                                                            \n"
-        //"{                                                                   \n"
-        //"    float    time;                                                  \n"
-        //"} vert_out;                                                         \n"
-		"out float out_time;"
-        
-		"void main()                                                         \n"
-        "{                                                                   \n"
-        "    gl_Position = vec4(pos, 0, 1);                                  \n"
-        "    out_time = time;                                           \n"
-        "}                                                                   \n"
+
+
+    //"out DATA                                                            \n"
+    //"{                                                                   \n"
+    //"    float    time;                                                  \n"
+    //"} vert_out;                                                         \n"
+    "out float out_time;"
+
+    "void main()                                                         \n"
+    "{                                                                   \n"
+    "    gl_Position = vec4(pos, 0, 1);                                  \n"
+    "    out_time = time;                                           \n"
+    "}                                                                   \n"
 };
 
 
 const char* fragment = {
 
-		"#version 300 es                                                    \n"
-		"precision highp float;                                                             \n"
+        "#version 300 es                                                    \n"
+        "precision highp float;                                                             \n"
         "                                                                   \n"
         "in float out_time;                                                  \n"
         "                                                          \n"
@@ -100,11 +111,11 @@ const char* fragment = {
 
 #define STRINGIFY(...) #__VA_ARGS__
 
-const char* star_field_vert = 
+const char* star_field_vert =
 #include "shader_star_field_vert.h"
 ;
 
-const char* star_field_frag = 
+const char* star_field_frag =
 #include "shader_star_field_frag.txt"
 ;
 
@@ -149,17 +160,17 @@ u32 compile_shader(u32 glenum, const char* source) {
     return shader;
 }
 
-        // exit(EXIT_FAILURE);
+// exit(EXIT_FAILURE);
 
 u32 shader_compile(const char* vrx, const char* frag) {
-    u32 vID = compile_shader(GL_VERTEX_SHADER,   vrx);
+    u32 vID = compile_shader(GL_VERTEX_SHADER, vrx);
     u32 fID = compile_shader(GL_FRAGMENT_SHADER, frag);
     u32 program = glCreateProgram();
-	glAttachShader(program, vID);
-	glAttachShader(program, fID);
-	glLinkProgram(program);
-    glDeleteShader(vID); 
-	glDeleteShader(fID);
+    glAttachShader(program, vID);
+    glAttachShader(program, fID);
+    glLinkProgram(program);
+    glDeleteShader(vID);
+    glDeleteShader(fID);
     return program;
 }
 
@@ -185,7 +196,7 @@ static float lerp(float a, float b, float t) {
 static void motocross_game_render();
 
 typedef enum {
-    Key_W, Key_S, Key_A, Key_D, Key_Space, 
+    Key_W, Key_S, Key_A, Key_D, Key_Space,
     Key_Max
 } Keycode;
 
@@ -196,7 +207,7 @@ static void init_gl_desktop() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-	window = glfwCreateWindow(SCREENWIDHT, SCREENHEIGHT, "CTech", NULL, NULL);
+    window = glfwCreateWindow(SCREENWIDHT, SCREENHEIGHT, "CTech", NULL, NULL);
     if (window == NULL) {
         printf("Failed to create window\n");
         exit(EXIT_FAILURE);
@@ -217,23 +228,23 @@ static void init_gl_desktop() {
 static u8 isKeyDown(Keycode key) {
     int scancode;
     switch (key) {
-        case Key_W: 
-            scancode = GLFW_KEY_W;
-            break;
-        case Key_S: 
-            scancode = GLFW_KEY_S;
-			break;
-        case Key_A: 
-            scancode = GLFW_KEY_A;
-			break;
-        case Key_D: 
-            scancode = GLFW_KEY_D;
-			break;
-        case Key_Space:
-            scancode = GLFW_KEY_SPACE;
-			break;
-        default:
-            return;
+    case Key_W:
+        scancode = GLFW_KEY_W;
+        break;
+    case Key_S:
+        scancode = GLFW_KEY_S;
+        break;
+    case Key_A:
+        scancode = GLFW_KEY_A;
+        break;
+    case Key_D:
+        scancode = GLFW_KEY_D;
+        break;
+    case Key_Space:
+        scancode = GLFW_KEY_SPACE;
+        break;
+    default:
+        return 0;
     }
 
     return glfwGetKey(window, scancode) == GLFW_PRESS;
@@ -265,13 +276,14 @@ EM_BOOL key_callback(int eventType, const EmscriptenKeyboardEvent* e, void* user
         code = Key_S;
         break;
     default:
-        return 0;  
+        return 0;
     }
 
-    if (eventType  == EMSCRIPTEN_EVENT_KEYUP) {
+    if (eventType == EMSCRIPTEN_EVENT_KEYUP) {
         printf("%i up\n", code);
         keys_down[code] = 0;
-    } else if (eventType  == EMSCRIPTEN_EVENT_KEYDOWN) {
+    }
+    else if (eventType == EMSCRIPTEN_EVENT_KEYDOWN) {
         printf("%i down\n", code);
         keys_down[code] = 1;
     }
@@ -325,13 +337,13 @@ int main() {
     glClearColor(1.0, 1.0, 1.0, 1.0);
 
     {
-	
+
         shader = shader_compile(vertex, fragment);
         glUseProgram(shader);
-		u32 time_loc = glGetUniformLocation(shader, "time");
-		shader_time_loc = time_loc;
+        u32 time_loc = glGetUniformLocation(shader, "time");
+        shader_time_loc = time_loc;
 
-		glUseProgram(0);
+        glUseProgram(0);
 
         shader_star = shader_compile(star_field_vert, star_field_frag);
         glUseProgram(shader_star);
@@ -341,56 +353,62 @@ int main() {
         shader_image = shader_compile(image_vert_src, image_frag_src);
         shader_image_sampler_loc = glGetUniformLocation(shader_image, "image");
 
-		glUseProgram(0);
+        glUseProgram(0);
     }
-	
-	
+
+
 #if defined(__EMSCRIPTEN__) 
-	emscripten_set_main_loop(main_loop, 0, 0);
+    emscripten_set_main_loop(main_loop, 0, 0);
 #else
-	while(1) {
-		main_loop();
-	}
+    while (1) {
+        main_loop();
+    }
 #endif
-    
-    // TODO: clean up mby
+
+    // TODO: clean up mby 
     return 0;
 }
 
 int resolution[2];
-/*
-void emscripten_resize()
-{
-    double width, height;
-    emscripten_get_element_css_size("canvas", &width, &height);
-    emscripten_set_canvas_size((int)width, (int)height);
-    // emscripten_set_resize_callback(0, 0, 0, emscWindowSizeChanged);
-}
-*/
 
 #if defined(__EMSCRIPTEN__)
 EM_JS(int, canvas_x, (), {
     return window.innerWidth;
-});
+    });
 
 EM_JS(int, canvas_y, (), {
     return window.innerHeight;
-});
+    });
 
-    // Module.canvas.width = x;
-    // Module.canvas.height = y;
+// Module.canvas.width = x;
+// Module.canvas.height = y;
 EM_JS(void, canvas_set_size, (int x, int y), {
     canvas.width = x;
     canvas.height = y;
-});
+    });
 #endif
+
+int SCREEN_H = 400;
+int SCREEN_W = 860;
+#define SCREEN_W_MAX 860
+u8* screen = 0;
 
 void window_on_resize(int x, int y) {
     // printf("hello from c %i %i \n", x, y);
     resolution[0] = x;
     resolution[1] = y;
-    
-#if defined(_WIN32)
+
+#if 0
+    float aspect_ratio = (float)x / (float)y;
+    SCREEN_W = MAX(x, SCREEN_W_MAX);
+    SCREEN_H = (float)y / aspect_ratio;
+    printf("aspect %f %i %i\n", aspect_ratio, SCREEN_W, SCREEN_H);
+    free(screen);
+    screen = malloc(SCREEN_H * SCREEN_W * 3);
+#endif
+
+
+#if !defined(__EMSCRIPTEN__)
     glfwSetWindowSize(window, x, y);
 #else
     canvas_set_size(x, y);
@@ -408,7 +426,7 @@ static void motocross_update_and_render(float dt);
 Background background = Background_star;
 
 void main_loop() {
-	static u8 init = 1;
+    static u8 init = 1;
     static float timer = 0.f;
 
 #if defined(__EMSCRIPTEN__)
@@ -423,109 +441,115 @@ void main_loop() {
     last_time = current_time;
     timer += dt * 0.5f;
 
+/*
+    if (isKeyDown(Key_Space)) {
+        printf("dt %f\n", dt);
+        window_on_resize(800, 600);
+    }
+*/
 
 
     // printf("dt %f\n", dt);
 
-	if (init) {
+    if (init) {
 #if defined(__EMSCRIPTEN__)
         int x = canvas_x();
         int y = canvas_y();
         window_on_resize(x, y);
-        printf("error %i %i\n", x, y);
 #endif
 
         srand(time(NULL));
         background = rand() % Background_max;
-        background = Background_motocross;
-		init = 0;
-		glGenVertexArrays(1, &vao);
-		GLuint vbo;
-		glGenBuffers(1, &vbo);
+        // background = Background_motocross;
 
-		glBindVertexArray(vao);
-		
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glEnableVertexAttribArray(0);
-	    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
-		
-		float verts[] = {
-			0.5f,  0.5f,      // top right
-			0.5f, -0.5f,      // bottom right
-			-0.5f, -0.5f,     // bottom left
-			-0.5f, -0.5f,     // bottom left
-			-0.5f,  0.5f,     // top left
-			0.5f,  0.5f       // top right
-		};
+        init = 0;
+        glGenVertexArrays(1, &vao);
+        GLuint vbo;
+        glGenBuffers(1, &vbo);
+
+        glBindVertexArray(vao);
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+        float verts[] = {
+            0.5f,  0.5f,      // top right
+            0.5f, -0.5f,      // bottom right
+            -0.5f, -0.5f,     // bottom left
+            -0.5f, -0.5f,     // bottom left
+            -0.5f,  0.5f,     // top left
+            0.5f,  0.5f       // top right
+        };
         for (int i = 0; i < 12; i++) {
             verts[i] *= 2;
         }
-		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
 
         glBindVertexArray(0);
 
         glGenVertexArrays(1, &image_vao);
         glBindVertexArray(image_vao);
         u32 vbo2;
-		glGenBuffers(1, &vbo2);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo2);
-		glEnableVertexAttribArray(0);
-	    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        glGenBuffers(1, &vbo2);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo2);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
 
 
-		float uvs[] = {
-			1.0f,  1.0f,     // top right
-		    1.0f,  0.0f,     // bottom right
-			0.0f,  0.0f,     // bottom left
-			0.0f,  0.0f,     // bottom left
-			0.0f,  1.0f,     // top left
-			1.0f,  1.0f      // top right
-		};
+        float uvs[] = {
+            1.0f,  1.0f,     // top right
+            1.0f,  0.0f,     // bottom right
+            0.0f,  0.0f,     // bottom left
+            0.0f,  0.0f,     // bottom left
+            0.0f,  1.0f,     // top left
+            1.0f,  1.0f      // top right
+        };
         u32 vbo_image;
         glGenBuffers(1, &vbo_image);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_image);
-		glEnableVertexAttribArray(1);
-	    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(uvs), uvs, GL_STATIC_DRAW);
-	}
-	
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_image);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(uvs), uvs, GL_STATIC_DRAW);
+    }
+
     glClearColor(0.1, 0.1, 0.1, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     if (background == Background_motocross) {
         glBindVertexArray(image_vao);
         motocross_update_and_render(dt * 100.f);
-	    glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
     }
     else if (background == Background_star) {
         glUseProgram(shader_star);
         glUniform1f(shader_star_time_loc, timer);
-#if defined _WIN32
-		resolution[0] = SCREENWIDHT;
-		resolution[1] = SCREENHEIGHT;
+#if !defined(__EMSCRIPTEN__)
+        resolution[0] = SCREENWIDHT;
+        resolution[1] = SCREENHEIGHT;
 #endif
-		glUniform2f(shader_star_resolution_loc, (float)resolution[0], (float)resolution[1]);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+        glUniform2f(shader_star_resolution_loc, (float)resolution[0], (float)resolution[1]);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
     }
 
 #if 0 // test cody
-	glUseProgram(shader);
-	glUniform1f(shader_time_loc, 0.5f);
-	glBindVertexArray(vao);
-	glDrawArrays(GL_TRIANGLES, 0, 6);
+    glUseProgram(shader);
+    glUniform1f(shader_time_loc, 0.5f);
+    glBindVertexArray(vao);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 #endif
-  
-	
-#if defined(_WIN32)
-	glfwSwapBuffers (window);
+
+
+#if !defined(__EMSCRIPTEN__)
+    glfwSwapBuffers(window);
     glfwSwapInterval(1);
 #endif
-	
+
 #if 0
-	printf("%s %i %i\n\n %s\n", star_field_vert, strlen(star_field_vert), 
-		strlen("void mainImage( out vec4 fragColor, in vec2 fragCoord ) { vec2 uv=fragCoord.xy/iResolution.xy-.5; uv.y*=iResolution.y/iResolution.x; vec3 dir=vec3(uv*zoom,1.); float time=iTime*speed+.25; float a1=.5+iMouse.x/iResolution.x*2.; float a2=.8+iMouse.y/iResolution.y*2.; mat2 rot1=mat2(cos(a1),sin(a1),-sin(a1),cos(a1)); mat2 rot2=mat2(cos(a2),sin(a2),-sin(a2),cos(a2)); dir.xz*=rot1; dir.xy*=rot2; vec3 from=vec3(1.,.5,0.5); from+=vec3(time*2.,time,-2.); from.xz*=rot1; from.xy*=rot2; float s=0.1,fade=1.; vec3 v=vec3(0.); for (int r=0; r<volsteps; r++) { vec3 p=from+s*dir*.5; p = abs(vec3(tile)-mod(p,vec3(tile*2.))); float pa,a=pa=0.; for (int i=0; i<iterations; i++) { p=abs(p)/dot(p,p)-formuparam; a+=abs(length(p)-pa); pa=length(p); } float dm=max(0.,darkmatter-a*a*.001); a*=a*a; if (r>6) fade*=1.-dm; v+=fade; v+=vec3(s,s*s,s*s*s*s)*a*brightness*fade; fade*=distfading; s+=stepsize; } v=mix(vec3(length(v)),v,saturation); fragColor = vec4(v*.01,1.); }")
-			, star_field_frag);
+    printf("%s %i %i\n\n %s\n", star_field_vert, strlen(star_field_vert),
+        strlen("void mainImage( out vec4 fragColor, in vec2 fragCoord ) { vec2 uv=fragCoord.xy/iResolution.xy-.5; uv.y*=iResolution.y/iResolution.x; vec3 dir=vec3(uv*zoom,1.); float time=iTime*speed+.25; float a1=.5+iMouse.x/iResolution.x*2.; float a2=.8+iMouse.y/iResolution.y*2.; mat2 rot1=mat2(cos(a1),sin(a1),-sin(a1),cos(a1)); mat2 rot2=mat2(cos(a2),sin(a2),-sin(a2),cos(a2)); dir.xz*=rot1; dir.xy*=rot2; vec3 from=vec3(1.,.5,0.5); from+=vec3(time*2.,time,-2.); from.xz*=rot1; from.xy*=rot2; float s=0.1,fade=1.; vec3 v=vec3(0.); for (int r=0; r<volsteps; r++) { vec3 p=from+s*dir*.5; p = abs(vec3(tile)-mod(p,vec3(tile*2.))); float pa,a=pa=0.; for (int i=0; i<iterations; i++) { p=abs(p)/dot(p,p)-formuparam; a+=abs(length(p)-pa); pa=length(p); } float dm=max(0.,darkmatter-a*a*.001); a*=a*a; if (r>6) fade*=1.-dm; v+=fade; v+=vec3(s,s*s,s*s*s*s)*a*brightness*fade; fade*=distfading; s+=stepsize; } v=mix(vec3(length(v)),v,saturation); fragColor = vec4(v*.01,1.); }")
+        , star_field_frag);
 #endif
 }
 
@@ -544,7 +568,7 @@ static Vec2 vec2_mul_scl(Vec2 a, float scalar) {
     return (Vec2) { a.x* scalar, a.y* scalar };
 }
 static Vec2 vec2_norm(Vec2 a) {
-    if ( (a.x * a.x + a.y * a.y) <= 0.f) {
+    if ((a.x * a.x + a.y * a.y) <= 0.f) {
         return (Vec2) { 0.f, 0.f };
     }
     float len = sqrt(a.x * a.x + a.y * a.y);
@@ -555,27 +579,26 @@ float vec2_dot(Vec2 a, Vec2 b) {
 }
 
 typedef struct Rgb {
-    u8 r, g, b;
+    u8 r, g, b, a;
 } Rgb;
 
 Rgb* height_map = 0;
 Rgb* color_map = 0;
-#define SCREEN_H 640  
-#define SCREEN_W 860  
-u8* screen = 0;
+static float height_map_f[1024 * 1024];
 int h_map_width = 0;
 int h_map_fmt = 0;
 int c_map_width = 0;
 int c_map_fmt = 0;
 
 
-void draw_vertical_line(int x, int height_on_screen, int screen_h, Rgb col);
+static inline void draw_vertical_line(int x, int height_on_screen, int screen_h, Rgb col);
 
 static Rgb lerp_col(Rgb a, Rgb b, float t) {
     return  (Rgb) { lerp(a.r, b.r, t), lerp(a.g, b.g, t), lerp(a.b, b.b, t) };
 }
 
 static int debug_frame = 0;
+static int ybuffer[SCREEN_W_MAX] = { 0 };
 static void render_rot(Vec2 p, float phi, int h, int horizon,
     int scale_height, int distance, int screen_w, int screen_h) {
 
@@ -587,8 +610,7 @@ static void render_rot(Vec2 p, float phi, int h, int horizon,
 
     // clear screen
     // TODO: Add sky
-    memset(screen, 0, SCREEN_H * SCREEN_W * 3);
-    int ybuffer[SCREEN_W] = { 0 };
+    // memset(screen, 0, SCREEN_H * SCREEN_W * 3);
 
     for (int i = 0; i < screen_w; i++) {
         ybuffer[i] = screen_h;
@@ -596,6 +618,9 @@ static void render_rot(Vec2 p, float phi, int h, int horizon,
     float dz = 1.f;
     float z = 1.f;
 
+    float inv_w = 1.0f / (float)screen_w;
+    float scale_hf = (float)scale_height;
+    float hf = (float)h;
 
     while (z < distance) {
         Vec2 pleft = {
@@ -607,53 +632,62 @@ static void render_rot(Vec2 p, float phi, int h, int horizon,
             (-sinphi * z - cosphi * z) + p.y
         };
 
-        float dx = (pright.x - pleft.x) / screen_w;
-        float dy = (pright.y - pleft.y) / screen_w;
+        float dx = (pright.x - pleft.x) * inv_w;
+        float dy = (pright.y - pleft.y) * inv_w;
 
+        float inv_z = 1.f / z * scale_hf;
 
         for (int i = 0; i < screen_w; i++) {
             int x = (int)pleft.x;
-            int y = (int)pleft.y;                                          
-
-            // 10^2 == 1024
-            // 1024-1
+            int y = (int)pleft.y;
             int index = ((y & 1023) << 10) + (x & 1023);
+            float height_on_screen = (hf - (float)height_map_f[index]) * inv_z + (float)horizon;
 
-
-            int ind = index;
-            float height_on_screen = (h - height_map[ind].r) / z * scale_height + horizon;
-
-            draw_vertical_line(i, height_on_screen, (int)ybuffer[i], color_map[ind]);
+            draw_vertical_line(i, height_on_screen, (int)ybuffer[i], color_map[index]);
 
             if (height_on_screen < ybuffer[i]) {
-                  ybuffer[i] = height_on_screen;
+                ybuffer[i] = height_on_screen;
             }
             pleft.x += dx;
             pleft.y += dy;
         }
 
-        z  += dz;
-        dz += 0.01;
+        z += dz;
+        dz += 0.005;
 
         if (++iters == debug_frame)
             return;
     }
 
+    Rgb c = { 120, 120, 120 };
+    // for (int i =250 ; i <300; i++)
+       // draw_vertical_line(i, 0, screen_h, c);
 
-#if 0
-    Rgb start = { 189.f / 255.f, 222.f / 255.f, 255.f/255.f };
-    Rgb end   = { 0.f, 0.f, 255.f };
-    for (int j = 0; j < SCREEN_H; j++) {
-        for (int i = 0; i < SCREEN_W; i++) {
+#if 1
+    Rgb start = { 189.f / 255.f, 222.f / 255.f, 255.f / 255.f };
+    Rgb end = { 0.f, 0.f, 255.f };
+    Rgb color = start;
+    for (int j = 0; j < SCREEN_W; j++) {
 
-            if (ybuffer[i] < j)
+        float t = (float)j / SCREEN_H;
+        // Rgb c = lerp_col(start, end, t);
+        // Rgb c = start;
+
+
+
+        for (int i = 0; i < SCREEN_H; i++) {
+            if (ybuffer[j] < i)
                 continue;
 
-            float t = (float)j / SCREEN_H;
-            Rgb c = lerp_col(start, end, t);
-            screen[(i * 3) + (j * SCREEN_W * 3) + 0] = c.r;
-            screen[(i * 3) + (j * SCREEN_W * 3) + 1] = c.g;
-            screen[(i * 3) + (j * SCREEN_W * 3) + 2] = c.b;
+#if SCREEN_FLIP_OPT
+            screen[(j * 3) + (i * SCREEN_H * 3) + 0] = color.r;
+            screen[(j * 3) + (i * SCREEN_H * 3) + 1] = color.g;
+            screen[(j * 3) + (i * SCREEN_H * 3) + 2] = color.b;
+#else
+            screen[(j * 3) + (i * SCREEN_W * 3) + 0] = color.r;
+            screen[(j * 3) + (i * SCREEN_W * 3) + 1] = color.g;
+            screen[(j * 3) + (i * SCREEN_W * 3) + 2] = color.b;
+#endif
         }
     }
 #endif
@@ -667,25 +701,38 @@ void draw_vertical_line(int x, int top, int bot, Rgb col) {
         top = 0;
     }
 
+    // optimizations
+#if SCREEN_FLIP_OPT
+    for (int i = top; i < bot; i++) {
+        screen[(i * 3) + (x * SCREEN_H * 3) + 0] = col.r;
+        screen[(i * 3) + (x * SCREEN_H * 3) + 1] = col.g;
+        screen[(i * 3) + (x * SCREEN_H * 3) + 2] = col.b;
+    }
+#else
     for (int i = top; i < bot; i++) {
         screen[(x * 3) + (i * SCREEN_W * 3) + 0] = col.r;
         screen[(x * 3) + (i * SCREEN_W * 3) + 1] = col.g;
         screen[(x * 3) + (i * SCREEN_W * 3) + 2] = col.b;
     }
+#endif
 }
 
 static void* png_load(const char* filename, int* x_out, int* y_out, int* fmt_out);
 static void motocross_debug_render();
 static void motocross_update_and_render(float dt) {
-   
+
 
     static u8 load_image = 1;
     if (load_image) {
         int y, fmt;
-        color_map  = png_load("C6.png",  &c_map_width, &y, &c_map_fmt);
-	    height_map = png_load("D62.png",  &h_map_width, &y, &h_map_fmt);
+        color_map = png_load("C6.png", &c_map_width, &y, &c_map_fmt);
+        height_map = png_load("D62.png", &h_map_width, &y, &h_map_fmt);
 
-		load_image = 0;
+        for (int i = 0; i < 1024 * 1024; i++) {
+            height_map_f[i] = height_map[i].r;
+        }
+
+        load_image = 0;
         screen = malloc(SCREEN_W * SCREEN_H * 3 * sizeof(u8));
     }
 
@@ -698,7 +745,7 @@ static void motocross_debug_render() {
 
     static u32 texture;
     static u8 init = 1;
-   
+
     if (init) {
         window_on_resize(SCREENWIDHT, SCREENHEIGHT);
         init = 0;
@@ -709,13 +756,25 @@ static void motocross_debug_render() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+#if SCREEN_FLIP_OPT 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_W, SCREEN_H, 0, GL_RGB, GL_UNSIGNED_BYTE,
             screen);
-        glGenerateMipmap(GL_TEXTURE_2D);
+#else
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_W, SCREEN_H, 0, GL_RGB, GL_UNSIGNED_BYTE,
+            screen);
+#endif
+        // glGenerateMipmap(GL_TEXTURE_2D);
     }
     else {
 
         if (motocross.rerender) {
+            glBindTexture(GL_TEXTURE_2D, texture);
+#if SCREEN_FLIP_OPT 
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_H, SCREEN_W, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                screen);
+#else
+            // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCREEN_W, SCREEN_H, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                // screen);
             glTexSubImage2D(GL_TEXTURE_2D,
                 0,
                 0,
@@ -725,6 +784,8 @@ static void motocross_debug_render() {
                 GL_RGB,
                 GL_UNSIGNED_BYTE,
                 screen);
+#endif
+
         }
     }
 
@@ -745,7 +806,7 @@ static void* png_load(const char* filename, int* x_out, int* y_out, int* fmt_out
         void* mem = malloc(size);
         fread(mem, size, 1, f);
 
-        void* rst = stbi_load_from_memory(mem, size, x_out, y_out, fmt_out, 0);
+        void* rst = stbi_load_from_memory(mem, size, x_out, y_out, fmt_out, 4);
         printf("loaded image %s: x: %i, y: %i, fmt: %i\n", filename, *x_out, *y_out, *fmt_out);
 
         fclose(f);
@@ -754,6 +815,7 @@ static void* png_load(const char* filename, int* x_out, int* y_out, int* fmt_out
     }
     return 0;
 }
+
 
 
 

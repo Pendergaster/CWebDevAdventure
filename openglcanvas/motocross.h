@@ -1,12 +1,6 @@
 
 #define INDEX(x, y) (((y & 1023) << 10) + (x & 1023))
 
-#ifndef MAX 
-#define MAX(x, y) ((x) >= (y) ? (x) : (y))
-#endif
-#ifndef MIN
-#define MIN(x, y) ((x) <= (y) ? (x) : (y))
-#endif
 
 #define CLAMP_MAX(x, max) MIN(x, max)
 #define CLAMP_MIN(x, min) MAX(x, min)
@@ -34,7 +28,6 @@ typedef struct {
 
 typedef struct {
 	int dummy;
-	int map_scale;
 	MotorCycle player;
     float gravity;
     u8 rerender;
@@ -42,7 +35,6 @@ typedef struct {
 
 static MotoCross motocross = {
     .dummy = 1453,
-    .map_scale = 120,
     .player = {
         .pos = {
             .y = 50.f
@@ -70,30 +62,30 @@ static void modify_height_map_test() {
 	int y = 512;
 	int r = 125;
 
-	float heigth = height_map[INDEX(x, y)].r;
+	float heigth = height_map_f[INDEX(x, y)];
 	
 	for (int i = 0; i < 1024; i++) {
 		for (int j = 0; j < r; j++) {
-			height_map[INDEX(x + i, y + j)].r = 0.f;
+			height_map_f[INDEX(x + i, y + j)] = 0.f;
 		}
 	}
 
 
 	for (int i = 0; i < r; i++) {
 		for (int j = 0; j < r; j++) {
-			height_map[INDEX(x + i, y + j)].r = 200;
+			height_map_f[INDEX(x + i, y + j)] = 200;
 		}
 	}
 }
 
 static float height_map_from_pos(float x, float y) {
-    return height_map[INDEX((int)x, (int)y)].r; // (float)motocross.map_scale;
+    return height_map_f[INDEX((int)x, (int)y)]; // (float)motocross.map_scale;
 }
 
 static void motocross_dig_dirt(float x, float y) {
 
     
-    height_map[INDEX((int)x, (int)y)].r -= 0.6f;
+    height_map_f[INDEX((int)x, (int)y)] -= 0.6f;
     Rgb col = color_map[INDEX((int)x, (int)y)];
     Rgb target = { 87, 62, 77 };
 
@@ -366,11 +358,8 @@ static void motocross_render() {
     MotorCycle* player = &motocross.player;
     Vec2 p = { player->pos.x, player->pos.z };
 
-   
-
     static float last_rot     = 0.f;
     static float last_wheelie = 0.f;
-
 
     if (fabs(motocross.player.vel.x) > 0.0001f || fabs(motocross.player.vel.y) > 0.0001f
         || player->rot != last_rot || player->wheelie_value != last_wheelie) {
@@ -382,9 +371,17 @@ static void motocross_render() {
     last_rot = player->rot;
     last_wheelie = player->wheelie_value;
     if (motocross.rerender) {
-        render_rot(p, player->rot, player->pos.y, 220 + player->wheelie_value, 
-		    motocross.map_scale, 500, SCREEN_W, SCREEN_H);
+
+        render_rot(p, player->rot, player->pos.y,
+            220 + player->wheelie_value,
+
+           	 150, 900, SCREEN_W, SCREEN_H);
     }
 
 }
+
+#if 0
+        render_rot(p, player->rot, player->pos.y, 220 + player->wheelie_value, 
+		    motocross.map_scale, 500, SCREEN_W, SCREEN_H);
+#endif
 
